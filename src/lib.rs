@@ -2,12 +2,20 @@ extern crate byteorder;
 #[macro_use]
 extern crate lazy_static;
 
-use std::env::args;
-use std::collections::HashMap;
 use byteorder::{LittleEndian, ByteOrder};
 
-// For part parsing: if we encounter 0x02 in message, check next byte for type stored in a hashmap
-// or something.
+macro_rules! opt {
+    ($e:expr) => (opt_or!($e, None))
+}
+
+macro_rules! opt_or {
+  ($e:expr, $ret:expr) => {{
+    match $e {
+      Some(x) => x,
+      None => return $ret
+    }
+  }}
+}
 
 #[derive(Debug)]
 pub struct RawEntry {
@@ -22,14 +30,8 @@ impl RawEntry {
   }
 
   pub fn as_parts(&self) -> Option<RawEntryParts> {
-    let header = match self.get_header() {
-      Some(h) => h,
-      None => return None
-    };
-    let second_colon = match self.bytes[9..].iter().position(|b| b == &0x3a) {
-      Some(i) => i,
-      None => return None
-    };
+    let header = opt!(self.get_header());
+    let second_colon = opt!(self.bytes[9..].iter().position(|b| b == &0x3a));
     let sender = self.bytes[9..second_colon + 9].to_vec();
     let message = self.bytes[second_colon + 9 + 1..].to_vec();
     Some(RawEntryParts {
@@ -45,15 +47,7 @@ impl RawEntry {
     }
     Some(self.bytes[..8].to_vec())
   }
-
-  fn get_text(&self) -> Option<String> {
-    let colon = match self.bytes[9..].iter().position(|b| b == &0x3a) {
-      Some(i) => i,
-      None => return None
-    };
-    Some(String::from_utf8_lossy(&self.bytes[colon + 9 + 1..]).into_owned().replace('\r', "\n"))
   }
-}
 
 #[derive(Debug)]
 pub struct RawEntryParts {
@@ -131,25 +125,27 @@ pub trait Parses {
   fn parse(bytes: &[u8]) -> Option<Part>;
 }
 
-pub trait MessagePart: HasDisplayText {}
-
 pub trait HasMarkerBytes {
   fn marker_bytes() -> (u8, u8);
 }
 
 #[derive(Debug)]
 pub enum Part {
-  Name { real_name: String, display_name: String },
+  Name { real_name: Box<Part>, display_name: Box<Part> },
   AutoTranslate { category: u8, id: usize },
-  PlainText(String)
+  Icon(usize),
+  PlainText(String),
+  Bytes(Vec<u8>)
 }
 
 impl HasDisplayText for Part {
   fn display_text(&self) -> String {
     match *self {
       Part::PlainText(ref text) => text.clone(),
-      Part::Name { real_name: _, ref display_name } => display_name.clone(),
-      Part::AutoTranslate { category, id } => format!("<AT: {}, {}>", category, id)
+      Part::Name { real_name: _, ref display_name } => display_name.display_text(),
+      Part::AutoTranslate { category, id } => format!("<AT: {}, {}>", category, id),
+      Part::Icon(id) => format!("<Icon: {}>", id),
+      Part::Bytes(ref bytes) => bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" ")
     }
   }
 }
@@ -161,10 +157,19 @@ impl NamePart {
   fn from_names<S>(real_name: S, display_name: S) -> Part
     where S: AsRef<str>
   {
+    let real = Part::PlainText(real_name.as_ref().to_owned());
+    let disp = Part::PlainText(display_name.as_ref().to_owned());
     Part::Name {
-      real_name: real_name.as_ref().to_owned(),
-      display_name: display_name.as_ref().to_owned()
+      real_name: Box::new(real),
+      display_name: Box::new(disp)
     }
+  }
+
+  fn from_parts(real_part: Part, display_part: Part) -> Part {
+    Part::Name {
+      real_name: Box::new(real_part),
+      display_name: Box::new(display_part)
+}
   }
 }
 
@@ -190,17 +195,15 @@ impl VerifiesData for NamePart {
 
 impl DeterminesLength for NamePart {
   fn determine_length(bytes: &[u8]) -> usize {
-    let end_pos = match bytes[2..].windows(2).position(|w| w == &[0x02, 0x27]) {
-      Some(i) => i,
-      None => return 0
-    };
-    let last_three = match bytes[end_pos + 2..].iter().position(|b| b == &0x03) {
-      Some(i) => i,
-      None => return 0
-    };
+    let end_pos = opt_or!(bytes[2..].windows(2).position(|w| w == &[0x02, 0x27]), 0);
+    let last_three = opt_or!(bytes[end_pos + 2..].iter().position(|b| b == &0x03), 0);
     let sum = 2 + end_pos + last_three;
     sum as usize
   }
+}
+
+pub fn to_hex_string(bytes: &[u8]) -> String {
+  bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" ")
 }
 
 impl Parses for NamePart {
@@ -209,19 +212,16 @@ impl Parses for NamePart {
       return None;
     }
     let real_length = bytes[2] as usize + 2;
-    let display_end = match bytes[real_length..].iter().position(|b| b == &0x02) {
-      Some(i) => i + real_length,
-      None => return None
+    let display_end = opt!(bytes[real_length..].windows(2).position(|w| w == &[0x02, 0x27])) + real_length;
+    let real_name = match String::from_utf8(real_bytes.to_vec()) {
+      Ok(r) => Part::PlainText(r),
+      Err(_) => Part::Bytes(real_bytes.to_vec())
     };
-    let real_name = match String::from_utf8(bytes[9..real_length].to_vec()) {
-      Ok(r) => r,
-      Err(_) => return None
+    let display_name = match String::from_utf8(display_bytes.to_vec()) {
+      Ok(r) => Part::PlainText(r),
+      Err(_) => Part::Bytes(display_bytes.to_vec())
     };
-    let display_name = match String::from_utf8(bytes[real_length + 1 .. display_end].to_vec()) {
-      Ok(d) => d,
-      Err(_) => return None
-    };
-    Some(NamePart::from_names(real_name, display_name))
+    Some(NamePart::from_parts(real_name, display_name))
   }
 }
 
@@ -285,23 +285,9 @@ impl Parses for AutoTranslatePart {
     }
     let length = bytes[2];
     let category = bytes[3];
-    let id = match AutoTranslatePart::byte_array_to_be(&bytes[4..3 + length as usize]) {
-      Some(id) => id,
-      None => return None
-    };
+    let id = opt!(AutoTranslatePart::byte_array_to_be(&bytes[4..3 + length as usize]));
     Some(AutoTranslatePart::from_parts(category, id))
   }
-}
-
-macro_rules! parse_structure_macro {
-  ($t:ident, $message:expr) => {{
-    let length = $t::determine_length(&$message);
-    let part = match $t::parse(&$message[..length]) {
-      Some(p) => p,
-      None => return None
-    };
-    Some((length, part))
-  }};
 }
 
 struct PlainTextPart;
@@ -312,6 +298,55 @@ impl PlainTextPart {
   {
     Part::PlainText(text.as_ref().to_owned())
   }
+}
+
+struct IconPart;
+
+impl HasMarkerBytes for IconPart {
+  fn marker_bytes() -> (u8, u8) {
+    static MARKER: (u8, u8) = (0x02, 0x12);
+    MARKER
+  }
+}
+
+impl VerifiesData for IconPart {
+  fn verify_data(bytes: &[u8]) -> bool {
+    unimplemented!();
+  }
+}
+
+impl DeterminesLength for IconPart {
+  fn determine_length(bytes: &[u8]) -> usize {
+    unimplemented!();
+  }
+}
+
+impl Parses for IconPart {
+  fn parse(bytes: &[u8]) -> Option<Part> {
+    unimplemented!();
+  }
+}
+
+macro_rules! parse_structure_macro {
+  ($t:ident, $message:expr) => {{
+    let length = $t::determine_length(&$message);
+    let part = opt!($t::parse(&$message[..length]));
+    Some((length, part))
+  }};
+}
+
+macro_rules! parse_structure_if_macro {
+  ($id:expr, $message:expr, $first_t:ident, $($t:ident),*) => {{
+    if $id == $first_t::marker_bytes().1 {
+      parse_structure_macro!($first_t, $message)
+    }
+    $(else if $id == $t::marker_bytes().1 {
+      parse_structure_macro!($t, $message)
+    })*
+    else {
+      None
+  }
+  }};
 }
 
 pub struct MessageParser;
@@ -348,12 +383,10 @@ impl MessageParser {
       return None;
     }
     let structure_id = message[1];
-    if structure_id == NamePart::marker_bytes().1 {
-      parse_structure_macro!(NamePart, message)
-    } else if structure_id == AutoTranslatePart::marker_bytes().1 {
-      parse_structure_macro!(AutoTranslatePart, message)
-    } else {
-      None
-    }
+    parse_structure_if_macro!(
+      structure_id,
+      message,
+      NamePart,
+      AutoTranslatePart)
   }
 }

@@ -3,6 +3,7 @@ extern crate memreader;
 
 use ffxiv_reader::*;
 use memreader::MemReader;
+// use memreader::FileReader;
 
 use std::env::args;
 
@@ -130,9 +131,5 @@ fn main() {
     println!("message: {}", String::from_utf8_lossy(&parts.message));
     println!("message: {:#?}", entry.message);
     println!();
-  }
 }
-
-fn to_hex_string(bytes: &[u8]) -> String {
-  bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" ")
 }
