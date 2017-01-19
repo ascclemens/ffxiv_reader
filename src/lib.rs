@@ -1,8 +1,17 @@
 extern crate byteorder;
 #[macro_use]
 extern crate lazy_static;
+extern crate memreader;
 
 use byteorder::{LittleEndian, ByteOrder};
+use std::sync::mpsc::Receiver;
+use memreader::MemReader;
+
+// const CHAT_ADDRESS: usize = 0x2C270010;
+// const CHAT_ADDRESS: usize = 0x2CB90010;
+const CHAT_ADDRESS: usize = 0x2CA25580;
+// const CHAT_ADDRESS: usize = 0x530;
+// const CHAT_ADDRESS: usize = 0xFA8;
 
 macro_rules! opt {
     ($e:expr) => (opt_or!($e, None))
@@ -456,5 +465,155 @@ impl MessageParser {
       NamePart,
       AutoTranslatePart,
       SelectablePart)
+  }
+}
+
+pub struct FfxivMemoryLogReader {
+  pid: u32,
+  rx: Option<Receiver<Vec<u8>>>
+}
+
+impl FfxivMemoryLogReader {
+  pub fn new(pid: u32) -> Self {
+    FfxivMemoryLogReader {
+      pid: pid,
+      rx: None
+    }
+  }
+
+  fn start(&self) -> Option<Receiver<Vec<u8>>> {
+    // Create a reader around the PID of the game.
+    let reader = match MemReader::new(self.pid) {
+      Ok(r) => r,
+      Err(e) => {
+        println!("Encountered error {} when trying to access memory.", e);
+        return None;
+      }
+    };
+    let (tx, rx) = std::sync::mpsc::channel();
+    // FIXME: Checking every half second is obviously a race condition. Keep track of last date and
+    //        ensure next date is greater than or equal to it. If not, assume incomplete data and
+    //        read more.
+    std::thread::spawn(move || {
+      // Create a buffer for read bytes that aren't full messages
+      let mut buffer: Vec<u8> = Vec::new();
+      // Keep track of the number of iterations
+      let mut iterations = 0;
+      // Read the first four bytes (the date of the first message) to check against later
+      let mut first_four = reader.read_bytes(CHAT_ADDRESS, 4).unwrap();
+      // Bytes to offset when reading after waiting
+      let mut offset: isize = 0;
+      // Read 32 bytes at a time
+      let chunk_size = 32;
+      loop {
+        // Check to see if the first message's date has changed. If it has, update our stored version
+        // and reset the iterations to start reading from the beginning of the memory block. This can
+        // totally miss the last message or last couple of messages depending on how frequently this
+        // runs. Moving this check to the end of the loop might fix this? TODO
+        // May need to clear buffer?
+        let check = reader.read_bytes(CHAT_ADDRESS, 4).unwrap();
+        if check != first_four {
+          first_four = check;
+          iterations = 0;
+        }
+        let unoffset_addr = CHAT_ADDRESS + (iterations * chunk_size);
+        let addr: isize = unoffset_addr as isize + offset;
+        // Read the next chunk
+        let mut read_bytes = reader.read_bytes(addr as usize, chunk_size).unwrap();
+        // Create a new vector to contain the buffer plus the newly read bytes
+        let mut bytes = Vec::new();
+        // Add the buffer
+        bytes.append(&mut buffer);
+        // Add the just-read bytes
+        bytes.append(&mut read_bytes.clone());
+        // Increment the iteration counter
+        iterations += 1;
+        // TODO: Consider making this a while let to clear the buffer before reading more (this may also
+        //       involve increasing the chunk size substantially to be more efficient)
+        // If we find a null byte outside of the header
+        if let Some(i) = bytes[8..].iter().position(|b| b == &0x00) {
+          // If there's not enough data to check if we have a full message, add all the data back to the
+          // buffer and start again.
+          if i + 8 + 8 >= bytes.len() {
+            buffer.append(&mut bytes);
+            continue;
+          }
+          // At this point, we know we're somewhere in the header, but not where. To account for the
+          // possibility of both null bytes being in the timestamp and colons being in the header, we
+          // assume here that the last byte of the header is always 0x00, which is an unsafe assumption,
+          // but always seems to be true.
+          // Find the rightmost null byte
+          let last_null = match bytes[i + 8 .. i + 8 + 8].iter().rposition(|b| b == &0x00) {
+            Some(n) => n,
+            None => 0 // we're already at the null byte
+          };
+          // The colon's index will be next to the null byte
+          let colon = i + 8 + last_null + 1;
+          // If we found a colon at the assumed index
+          if bytes[colon] == 0x3a {
+            offset = 0;
+            // Add the message to the message vector
+            tx.send(bytes[..colon - 8].to_vec()).unwrap();
+            // messages.push(bytes[..colon - 8].to_vec());
+            // Add the rest of the bytes back to the buffer
+            buffer.append(&mut bytes[colon - 8..].to_vec());
+          // If we didn't find a colon, which is indicative of being at the end of the log
+          } else {
+            if bytes.iter().any(|x| x != &0x00) {
+              let message = &bytes[..colon - 8];
+              tx.send(message.to_vec()).unwrap();
+              // set offset
+              let mut last_byte = 0;
+              let mut pos = 0;
+              for byte in bytes.iter().rev() {
+                if last_byte == 0 && *byte != 0 {
+                  break;
+                }
+                last_byte = *byte;
+                pos += 1;
+              }
+              let new_offset = chunk_size as isize - pos as isize;
+              if offset != 0 {
+                iterations += 1;
+                offset = chunk_size as isize - new_offset + (offset * -1);
+                if read_bytes.len() <= chunk_size {
+                  offset *= -1;
+                }
+              } else {
+                offset = new_offset;
+              }
+            } else {
+              std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            iterations -= 1;
+          }
+        // If we don't find a null byte outside of the header
+        } else {
+          // Add all the bytes back to the buffer and start again
+          buffer.append(&mut bytes);
+        }
+      }
+    });
+    Some(rx)
+  }
+}
+
+impl Iterator for FfxivMemoryLogReader {
+  type Item = Entry;
+
+  fn next(&mut self) -> Option<Entry> {
+    if self.rx.is_none() {
+      let rx = opt!(self.start());
+      self.rx = Some(rx);
+    }
+    let rx = match self.rx {
+      Some(ref r) => r,
+      None => return None
+    };
+    let bytes = rx.recv().unwrap();
+    let raw = RawEntry::new(bytes);
+    let parts = opt!(raw.as_parts());
+    let entry = parts.as_entry();
+    Some(entry)
   }
 }
