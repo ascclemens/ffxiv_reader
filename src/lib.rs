@@ -62,16 +62,14 @@ impl RawEntryParts {
     let timestamp = LittleEndian::read_u32(&self.header[..4]);
     let sender = if self.sender.is_empty() {
       None
+    } else if let Some(part) = NamePart::parse(&self.sender) {
+      Some(part)
+    } else if let Ok(name) = String::from_utf8(self.sender.clone()) {
+      Some(NamePart::from_names(&name, &name))
+    } else if !self.sender.is_empty() {
+      Some(Part::Bytes(self.sender.clone()))
     } else {
-      if let Some(part) = NamePart::parse(&self.sender) {
-        Some(part)
-      } else if let Ok(name) = String::from_utf8(self.sender.clone()) {
-        Some(NamePart::from_names(&name, &name))
-      } else if self.sender.len() > 0 {
-        Some(Part::Bytes(self.sender.clone()))
-      } else {
-        None
-      }
+      None
     };
     let message = Message::new(MessageParser::parse(&self.message));
     Entry {
@@ -145,10 +143,10 @@ impl HasDisplayText for Part {
   fn display_text(&self) -> String {
     match *self {
       Part::PlainText(ref text) => text.clone(),
-      Part::Name { real_name: _, ref display_name } => display_name.display_text(),
+      Part::Name { ref display_name, .. } => display_name.display_text(),
       Part::AutoTranslate { category, id } => format!("<AT: {}, {}>", category, id),
       Part::Bytes(ref bytes) => bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" "),
-      Part::Selectable { info: _, ref display } => display.display_text(),
+      Part::Selectable { ref display, .. } => display.display_text(),
       Part::Multi(ref parts) => parts.iter().map(|x| x.display_text()).collect::<Vec<_>>().join("")
     }
   }
@@ -193,7 +191,7 @@ impl VerifiesData for NamePart {
     if bytes[0] != two || bytes[1] != marker {
       return false;
     }
-    return true;
+    true
   }
 }
 
@@ -282,7 +280,7 @@ impl VerifiesData for AutoTranslatePart {
     if bytes[0] != two || bytes[1] != marker {
       return false;
     }
-    return true;
+    true
   }
 }
 
@@ -307,7 +305,7 @@ impl Parses for AutoTranslatePart {
 struct PlainTextPart;
 
 impl PlainTextPart {
-  fn new<S>(text: S) -> Part
+  fn from_text<S>(text: S) -> Part
     where S: AsRef<str>
   {
     Part::PlainText(text.as_ref().to_owned())
@@ -350,7 +348,7 @@ impl VerifiesData for SelectablePart {
     if bytes[0] != two || bytes[1] != marker {
       return false;
     }
-    return true;
+    true
   }
 }
 
@@ -424,7 +422,7 @@ impl MessageParser {
       if byte == 0x02 {
         if let Some((len, part)) = MessageParser::parse_structure(&message[i..]) {
           if !buf.is_empty() {
-            parts.push(PlainTextPart::new(String::from_utf8_lossy(&buf)));
+            parts.push(PlainTextPart::from_text(String::from_utf8_lossy(&buf)));
             buf.clear();
           }
           parts.push(part);
@@ -436,7 +434,7 @@ impl MessageParser {
       i += 1;
     }
     if !buf.is_empty() {
-      parts.push(PlainTextPart::new(String::from_utf8_lossy(&buf)));
+      parts.push(PlainTextPart::from_text(String::from_utf8_lossy(&buf)));
     }
     parts
   }
