@@ -422,7 +422,10 @@ impl MessageParser {
       if byte == 0x02 {
         if let Some((len, part)) = MessageParser::parse_structure(&message[i..]) {
           if !buf.is_empty() {
-            parts.push(PlainTextPart::from_text(String::from_utf8_lossy(&buf)));
+            match String::from_utf8(buf.to_vec()) {
+              Ok(s) => parts.push(PlainTextPart::from_text(s)),
+              Err(_) => parts.push(Part::Bytes(buf.to_vec()))
+            }
             buf.clear();
           }
           parts.push(part);
@@ -434,7 +437,10 @@ impl MessageParser {
       i += 1;
     }
     if !buf.is_empty() {
-      parts.push(PlainTextPart::from_text(String::from_utf8_lossy(&buf)));
+      match String::from_utf8(buf.to_vec()) {
+        Ok(s) => parts.push(PlainTextPart::from_text(s)),
+        Err(_) => parts.push(Part::Bytes(buf))
+      }
     }
     parts
   }
