@@ -47,7 +47,7 @@ impl RawEntry {
     }
     Some(self.bytes[..8].to_vec())
   }
-  }
+}
 
 #[derive(Debug)]
 pub struct RawEntryParts {
@@ -67,6 +67,8 @@ impl RawEntryParts {
         Some(part)
       } else if let Ok(name) = String::from_utf8(self.sender.clone()) {
         Some(NamePart::from_names(&name, &name))
+      } else if self.sender.len() > 0 {
+        Some(Part::Bytes(self.sender.clone()))
       } else {
         None
       }
@@ -133,6 +135,8 @@ pub trait HasMarkerBytes {
 pub enum Part {
   Name { real_name: Box<Part>, display_name: Box<Part> },
   AutoTranslate { category: u8, id: usize },
+  Selectable { info: Vec<u8>, display: Box<Part> },
+  Multi(Vec<Box<Part>>),
   Icon(usize),
   PlainText(String),
   Bytes(Vec<u8>)
@@ -145,7 +149,9 @@ impl HasDisplayText for Part {
       Part::Name { real_name: _, ref display_name } => display_name.display_text(),
       Part::AutoTranslate { category, id } => format!("<AT: {}, {}>", category, id),
       Part::Icon(id) => format!("<Icon: {}>", id),
-      Part::Bytes(ref bytes) => bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" ")
+      Part::Bytes(ref bytes) => bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" "),
+      Part::Selectable { info: _, ref display } => display.display_text(),
+      Part::Multi(ref parts) => parts.iter().map(|x| x.display_text()).collect::<Vec<_>>().join("")
     }
   }
 }
@@ -169,7 +175,7 @@ impl NamePart {
     Part::Name {
       real_name: Box::new(real_part),
       display_name: Box::new(display_part)
-}
+    }
   }
 }
 
@@ -213,13 +219,22 @@ impl Parses for NamePart {
     }
     let real_length = bytes[2] as usize + 2;
     let display_end = opt!(bytes[real_length..].windows(2).position(|w| w == &[0x02, 0x27])) + real_length;
+    let real_bytes = &bytes[9..real_length];
     let real_name = match String::from_utf8(real_bytes.to_vec()) {
       Ok(r) => Part::PlainText(r),
       Err(_) => Part::Bytes(real_bytes.to_vec())
     };
-    let display_name = match String::from_utf8(display_bytes.to_vec()) {
-      Ok(r) => Part::PlainText(r),
-      Err(_) => Part::Bytes(display_bytes.to_vec())
+    let display_bytes = &bytes[real_length + 1 .. display_end];
+    let mut parts = MessageParser::parse(display_bytes);
+    let display_name = if parts.len() == 1 {
+      parts.remove(0)
+    } else if parts.len() > 1 {
+      let boxed_parts = parts.into_iter().map(|x| Box::new(x)).collect();
+      Part::Multi(boxed_parts)
+    } else if let Ok(s) = String::from_utf8(display_bytes.to_vec()) {
+      Part::PlainText(s)
+    } else {
+      Part::Bytes(display_bytes.to_vec())
     };
     Some(NamePart::from_parts(real_name, display_name))
   }
@@ -327,6 +342,74 @@ impl Parses for IconPart {
   }
 }
 
+struct SelectablePart;
+
+impl SelectablePart {
+  fn from_parts(info: Vec<u8>, display: Part) -> Part {
+    Part::Selectable {
+      info: info,
+      display: Box::new(display)
+    }
+  }
+}
+
+impl HasMarkerBytes for SelectablePart {
+  fn marker_bytes() -> (u8, u8) {
+    static MARKER: (u8, u8) = (0x02, 0x13);
+    MARKER
+  }
+}
+
+impl VerifiesData for SelectablePart {
+  fn verify_data(bytes: &[u8]) -> bool {
+    if bytes.len() < 7 {
+      return false;
+    }
+    let (two, marker) = SelectablePart::marker_bytes();
+    if bytes[0] != two || bytes[1] != marker {
+      return false;
+    }
+    return true;
+  }
+}
+
+impl DeterminesLength for SelectablePart {
+  fn determine_length(bytes: &[u8]) -> usize {
+    let marker = SelectablePart::marker_bytes();
+    let end_pos = opt_or!(bytes[2..].windows(2).rposition(|w| w == &[marker.0, marker.1]), 0);
+    let last_three = opt_or!(bytes[end_pos + 2..].iter().position(|b| b == &0x03), 0);
+    let sum = 2 + end_pos + last_three;
+    sum as usize
+  }
+}
+
+impl Parses for SelectablePart {
+  fn parse(bytes: &[u8]) -> Option<Part> {
+    if !SelectablePart::verify_data(bytes) {
+      return None;
+    }
+    let marker = SelectablePart::marker_bytes();
+    let info_length = bytes[2] as usize + 2;
+    // lol rposition because you can embed parts inside of parts, and I don't want to do a ton of
+    // logic to find out the length properly.
+    let display_end = opt!(bytes[info_length..].windows(2).rposition(|w| w == &[marker.0, marker.1])) + info_length;
+    let info_bytes = &bytes[3..info_length];
+    let display_bytes = &bytes[info_length + 1 .. display_end];
+    let mut parts = MessageParser::parse(display_bytes);
+    let display_part = if parts.len() == 1 {
+      parts.remove(0)
+    } else if parts.len() > 1 {
+      let boxed_parts = parts.into_iter().map(|x| Box::new(x)).collect();
+      Part::Multi(boxed_parts)
+    } else if let Ok(s) = String::from_utf8(display_bytes.to_vec()) {
+      Part::PlainText(s)
+    } else {
+      Part::Bytes(display_bytes.to_vec())
+    };
+    Some(SelectablePart::from_parts(info_bytes.to_vec(), display_part))
+  }
+}
+
 macro_rules! parse_structure_macro {
   ($t:ident, $message:expr) => {{
     let length = $t::determine_length(&$message);
@@ -345,7 +428,7 @@ macro_rules! parse_structure_if_macro {
     })*
     else {
       None
-  }
+    }
   }};
 }
 
@@ -387,6 +470,7 @@ impl MessageParser {
       structure_id,
       message,
       NamePart,
-      AutoTranslatePart)
+      AutoTranslatePart,
+      SelectablePart)
   }
 }
