@@ -11,8 +11,6 @@ use memreader::MemReader;
 // const CHAT_ADDRESS: usize = 0x2CB90010;
 const CHAT_ADDRESS: usize = 0x2CA25580;
 const INDEX_POINTER: usize = 0x2CA90E4C;
-// const CHAT_ADDRESS: usize = 0x530;
-// const CHAT_ADDRESS: usize = 0xFA8;
 
 macro_rules! opt {
     ($e:expr) => (opt_or!($e, None))
@@ -493,19 +491,20 @@ impl FfxivMemoryLogReader {
     };
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-      // Vector of already-read indices
-      let mut indices: Vec<u32> = Vec::new();
+      // Index of last read index
+      let mut index_index = 0;
       loop {
         // Get raw bytes for current index pointer
         let raw_pointer = reader.read_bytes(INDEX_POINTER, 4).unwrap();
         // Read the raw bytes into an address
         let pointer = LittleEndian::read_u32(&raw_pointer);
         // Read u32s backwards until we hit 0
-        let mut mem_indices = Vec::new();
+        let mut mem_indices = Vec::with_capacity(index_index + 1);
         loop {
           // Read backwards, incrementing by four for each index read
-          let index = LittleEndian::read_u32(
-            &reader.read_bytes(pointer as usize - (4 * (mem_indices.len() + 1)), 4).unwrap());
+          let raw_index = reader.read_bytes(pointer as usize - (4 * (mem_indices.len() + 1)), 4).unwrap();
+          // Read the raw bytes into a u32
+          let index = LittleEndian::read_u32(&raw_index);
           // If we hit a 0, break out of the loop
           if index == 0 {
             break;
@@ -513,26 +512,22 @@ impl FfxivMemoryLogReader {
           // Otherwise, insert the index at the start
           mem_indices.insert(0, index);
         }
-        // If the indices we just read match what we have stored, sleep and restart the loop. This
-        // being true indicates that there have been no new messages.
-        if mem_indices.len() == indices.len() {
+        // If the number of indices we just read is equal to the last index of the indices we read,
+        // there are no new messages, so sleep and restart the loop.
+        if mem_indices.len() == index_index {
           std::thread::sleep(std::time::Duration::from_millis(100));
           continue;
         }
         // Get all the new indices
-        let new_indices = &mem_indices[indices.len()..];
+        let new_indices = &mem_indices[index_index..];
         // Get the last index, or 0 to start
-        let mut last_index = if indices.len() == 0 {
+        let mut last_index = if index_index == 0 {
           0
         } else {
-          // The last index will be in the new indices we just read, being the last one we have
-          // stored
-          mem_indices[indices.len() - 1]
+          // The last index will be in the new indices we just read, being the last one we have read
+          mem_indices[index_index - 1]
         };
-        // Add all the new indices to the list of the ones we've read
-        for new in new_indices {
-          indices.push(*new);
-        }
+        index_index = mem_indices.len();
         // Read each new message and send it
         for index in new_indices {
           let message = reader.read_bytes(CHAT_ADDRESS + last_index as usize, *index as usize - last_index as usize).unwrap();
