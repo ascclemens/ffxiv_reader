@@ -2,7 +2,6 @@ extern crate ffxiv_reader;
 extern crate memreader;
 
 use ffxiv_reader::*;
-use memreader::MemReader;
 
 use std::env::args;
 
