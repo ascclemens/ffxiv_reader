@@ -7,9 +7,7 @@ use byteorder::{LittleEndian, ByteOrder};
 use std::sync::mpsc::Receiver;
 use memreader::MemReader;
 
-// const CHAT_ADDRESS: usize = 0x2C270010;
-// const CHAT_ADDRESS: usize = 0x2CB90010;
-const CHAT_ADDRESS: usize = 0x2CA25580;
+const CHAT_POINTER: usize = 0x2CA90E58;
 const INDEX_POINTER: usize = 0x2CA90E4C;
 
 macro_rules! opt {
@@ -576,9 +574,10 @@ impl FfxivMemoryLogReader {
         return None;
       }
     };
+    let raw_chat_pointer = reader.read_bytes(CHAT_POINTER, 4).unwrap();
+    let chat_address = LittleEndian::read_u32(&raw_chat_pointer) as usize;
     let stop = self.stop;
     let (tx, rx) = std::sync::mpsc::channel();
-    // FIXME: There is a memory leak somewhere in this loop (most likely?)
     std::thread::spawn(move || {
       // Index of last read index
       let mut index_index = 0;
@@ -623,7 +622,7 @@ impl FfxivMemoryLogReader {
         index_index = mem_indices.len();
         // Read each new message and send it
         for index in new_indices {
-          let message = reader.read_bytes(CHAT_ADDRESS + last_index as usize, *index as usize - last_index as usize).unwrap();
+          let message = reader.read_bytes(chat_address + last_index as usize, *index as usize - last_index as usize).unwrap();
           last_index = *index;
           tx.send(message).unwrap();
         }
