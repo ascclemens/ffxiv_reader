@@ -1,5 +1,4 @@
 extern crate ffxiv_reader;
-extern crate memreader;
 
 use ffxiv_reader::*;
 
