@@ -4,20 +4,12 @@ use ffxiv_reader::*;
 
 use std::env::args;
 
-// The loop reads data from memory until it finds a null byte outside of the first eight bytes it
-// has read. It skips eight bytes because the header of the message it is reading is eight bytes.
-// Finding a null byte beyond the header means that we have read the header of the next message, and
-// we can then do some rudimentary math to determine where the next message's header starts. If we
-// determine there is no next message, then we are at the end of the log, and we should continue
-// checking the end of the log for messages. We must also check the timestamp of the first message
-// in the log memory chunk, since the game will start to write over the memory when it reaches the
-// end of the chunk (first writing all of the log into a file on the disk). If the timestamp of the
-// first message changes, we should ensure we have read all the messages at the end of the memory
-// chunk, and then we should begin reading at the start of the memory chunk again.
+// The main loop checks the game's memory for a list of indices that point to where messages start
+// in the chat log kept in memory. The loop checks for new indices by checking a pointer, then reads
+// any new messages it hasn't read before by reading from the chat log in memory at the index
+// locations.
 
-// TODO: Figure out how to keep messages from running into each other when the game starts to write
-//       at the beginning of the memory chunk again.
-// TODO: Ensure the last messages are read when the first timestamp changes.
+// TODO: Investigate what happens when the memory fills up and starts from the beginning again.
 
 fn main() {
   // Gather the arguments supplied to the program.
@@ -35,10 +27,20 @@ fn main() {
       return;
     }
   };
+  // Check whether the program should continue scanning memory or just stop.
+  let stop = if args.len() > 1 {
+    match args[1].to_lowercase().parse() {
+      Ok(b) => b,
+      Err(e) => {
+        println!("Invalid stop argument. Please specify true/false. {}", e);
+        return;
+      }
+    }
+  } else { false };
   // Create a log reader.
-  let reader = FfxivMemoryLogReader::new(pid);
+  let reader = FfxivMemoryLogReader::new(pid, stop);
   // Print out every entry.
   for entry in reader {
-    println!("[{}], {}, <{}> {}", entry.timestamp, entry.entry_type, entry.sender.map(|x| x.display_text()).unwrap_or_else(|| String::from("None")), entry.message.display_text());
+    println!("[{}], {}, <{}> {}", entry.timestamp, entry.message_type, entry.sender.map(|x| x.display_text()).unwrap_or_else(|| String::from("None")), entry.message.display_text());
   }
 }

@@ -66,7 +66,7 @@ pub struct RawEntryParts {
 
 impl RawEntryParts {
   pub fn as_entry(&self) -> Entry {
-    let entry_type = self.header[4];
+    let message_type = self.header[4];
     let timestamp = LittleEndian::read_u32(&self.header[..4]);
     let sender = if self.sender.is_empty() {
       None
@@ -81,7 +81,7 @@ impl RawEntryParts {
     };
     let message = Message::new(MessageParser::parse(&self.message));
     Entry {
-      entry_type: entry_type,
+      message_type: message_type.into(),
       timestamp: timestamp,
       sender: sender,
       message: message
@@ -91,7 +91,7 @@ impl RawEntryParts {
 
 #[derive(Debug)]
 pub struct Entry {
-  pub entry_type: u8,
+  pub message_type: MessageType,
   pub timestamp: u32,
   pub sender: Option<Part>,
   pub message: Message
@@ -396,6 +396,91 @@ impl Parses for SelectablePart {
   }
 }
 
+#[derive(Debug)]
+pub enum MessageType {
+  SystemMessage,
+  Say,
+  Shout,
+  Reply,
+  Tell,
+  Party,
+  Linkshell1,
+  Linkshell2,
+  Linkshell3,
+  Linkshell4,
+  Linkshell5,
+  Linkshell6,
+  Linkshell7,
+  Linkshell8,
+  FreeCompanyChat,
+  CustomEmote,
+  Emote,
+  Yell,
+  ItemGained,
+  Echo,
+  ClientMessage,
+  DutyFinderUpdate,
+  RewardReceived,
+  ExperienceGained,
+  Loot,
+  NpcChat,
+  FreeCompanyEvent,
+  LogInOut,
+  MarketBoard,
+  PartyFinderUpdate,
+  PartyMark,
+  Random,
+  TrialUpdate,
+  Unknown(u8)
+}
+
+impl std::fmt::Display for MessageType {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    std::fmt::Debug::fmt(self, f)
+  }
+}
+
+impl From<u8> for MessageType {
+  fn from(u: u8) -> MessageType {
+    match u {
+      0x03 => MessageType::SystemMessage,
+      0x0a => MessageType::Say,
+      0x0b => MessageType::Shout,
+      0x0c => MessageType::Reply,
+      0x0d => MessageType::Tell,
+      0x0e => MessageType::Party,
+      0x10 => MessageType::Linkshell1,
+      0x11 => MessageType::Linkshell2,
+      0x12 => MessageType::Linkshell3,
+      0x13 => MessageType::Linkshell4,
+      0x14 => MessageType::Linkshell5,
+      0x15 => MessageType::Linkshell6,
+      0x16 => MessageType::Linkshell7,
+      0x17 => MessageType::Linkshell8,
+      0x18 => MessageType::FreeCompanyChat,
+      0x1c => MessageType::CustomEmote,
+      0x1d => MessageType::Emote,
+      0x1e => MessageType::Yell,
+      // 0x3e => MessageType::ItemGained,
+      0x38 => MessageType::Echo,
+      0x39 => MessageType::ClientMessage,
+      0x3c => MessageType::DutyFinderUpdate,
+      // 0x3e => MessageType::RewardReceived,
+      0x40 => MessageType::ExperienceGained,
+      0x41 => MessageType::Loot,
+      0x44 => MessageType::NpcChat,
+      0x45 => MessageType::FreeCompanyEvent,
+      0x46 => MessageType::LogInOut,
+      0x47 => MessageType::MarketBoard,
+      0x48 => MessageType::PartyFinderUpdate,
+      0x49 => MessageType::PartyMark,
+      0x4a => MessageType::Random,
+      0xb9 => MessageType::TrialUpdate,
+      _ => MessageType::Unknown(u)
+    }
+  }
+}
+
 macro_rules! parse_structure_macro {
   ($t:ident, $message:expr) => {{
     let length = $t::determine_length(&$message);
@@ -469,13 +554,15 @@ impl MessageParser {
 
 pub struct FfxivMemoryLogReader {
   pid: u32,
+  stop: bool,
   rx: Option<Receiver<Vec<u8>>>
 }
 
 impl FfxivMemoryLogReader {
-  pub fn new(pid: u32) -> Self {
+  pub fn new(pid: u32, stop: bool) -> Self {
     FfxivMemoryLogReader {
       pid: pid,
+      stop: stop,
       rx: None
     }
   }
@@ -489,7 +576,9 @@ impl FfxivMemoryLogReader {
         return None;
       }
     };
+    let stop = self.stop;
     let (tx, rx) = std::sync::mpsc::channel();
+    // FIXME: There is a memory leak somewhere in this loop (most likely?)
     std::thread::spawn(move || {
       // Index of last read index
       let mut index_index = 0;
@@ -515,8 +604,12 @@ impl FfxivMemoryLogReader {
         // If the number of indices we just read is equal to the last index of the indices we read,
         // there are no new messages, so sleep and restart the loop.
         if mem_indices.len() == index_index {
-          std::thread::sleep(std::time::Duration::from_millis(100));
-          continue;
+          if stop {
+            break;
+          } else {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            continue;
+          }
         }
         // Get all the new indices
         let new_indices = &mem_indices[index_index..];
@@ -534,8 +627,6 @@ impl FfxivMemoryLogReader {
           last_index = *index;
           tx.send(message).unwrap();
         }
-        // Sleep before restarting
-        std::thread::sleep(std::time::Duration::from_millis(100));
       }
     });
     Some(rx)
@@ -554,7 +645,10 @@ impl Iterator for FfxivMemoryLogReader {
       Some(ref r) => r,
       None => return None
     };
-    let bytes = rx.recv().unwrap();
+    let bytes = match rx.recv() {
+      Ok(b) => b,
+      Err(_) => return None
+    };
     let raw = RawEntry::new(bytes);
     let parts = opt!(raw.as_parts());
     let entry = parts.as_entry();
