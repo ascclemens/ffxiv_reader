@@ -1,4 +1,5 @@
 extern crate ffxiv_reader;
+extern crate serde_json;
 
 use ffxiv_reader::*;
 
@@ -10,6 +11,10 @@ use std::env::args;
 // locations.
 
 // TODO: Investigate what happens when the memory fills up and starts from the beginning again.
+//       Written what I think is a reasonable bit of logic for handling it, but I haven't actually
+//       tested it.
+// TODO: Handle the game closing, logging out, disconnects, etc. better. Wait for pointers to become
+//       valid again, then start reading again.
 
 fn main() {
   // Gather the arguments supplied to the program.
@@ -41,6 +46,6 @@ fn main() {
   let reader = FfxivMemoryLogReader::new(pid, stop);
   // Print out every entry.
   for entry in reader {
-    println!("[{}], {}, <{}> {}", entry.timestamp, entry.message_type, entry.sender.map(|x| x.display_text()).unwrap_or_else(|| String::from("None")), entry.message.display_text());
+    println!("{}", serde_json::to_string(&entry).unwrap());
   }
 }

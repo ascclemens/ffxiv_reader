@@ -1,14 +1,21 @@
 extern crate byteorder;
-#[macro_use]
-extern crate lazy_static;
 extern crate memreader;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 
 use byteorder::{LittleEndian, ByteOrder};
 use std::sync::mpsc::Receiver;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use memreader::MemReader;
 
 const CHAT_POINTER: usize = 0x2CA90E58;
-const INDEX_POINTER: usize = 0x2CA90E4C;
+const INDEX_POINTER: usize = CHAT_POINTER - 12;
+const LINES_ADDRESS: usize = CHAT_POINTER - 52;
+
+// TODO: Handle the game closing, logging out, disconnects, etc. better. Wait for pointers to become
+//       valid again, then start reading again.
 
 macro_rules! opt {
     ($e:expr) => (opt_or!($e, None))
@@ -71,7 +78,7 @@ impl RawEntryParts {
     } else if let Some(part) = NamePart::parse(&self.sender) {
       Some(part)
     } else if let Ok(name) = String::from_utf8(self.sender.clone()) {
-      Some(NamePart::from_names(&name, &name))
+      Some(Part::PlainText(name))
     } else if !self.sender.is_empty() {
       Some(Part::Bytes(self.sender.clone()))
     } else {
@@ -87,7 +94,7 @@ impl RawEntryParts {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Entry {
   pub message_type: MessageType,
   pub timestamp: u32,
@@ -95,7 +102,7 @@ pub struct Entry {
   pub message: Message
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Message {
   pub parts: Vec<Part>
 }
@@ -135,7 +142,7 @@ pub trait HasMarkerBytes {
   fn marker_bytes() -> (u8, u8);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Part {
   Name { real_name: Box<Part>, display_name: Box<Part> },
   AutoTranslate { category: u8, id: usize },
@@ -162,7 +169,7 @@ impl HasDisplayText for Part {
 pub struct NamePart;
 
 impl NamePart {
-  fn from_names<S>(real_name: S, display_name: S) -> Part
+  pub fn from_names<S>(real_name: S, display_name: S) -> Part
     where S: AsRef<str>
   {
     let real = Part::PlainText(real_name.as_ref().to_owned());
@@ -173,7 +180,7 @@ impl NamePart {
     }
   }
 
-  fn from_parts(real_part: Part, display_part: Part) -> Part {
+  pub fn from_parts(real_part: Part, display_part: Part) -> Part {
     Part::Name {
       real_name: Box::new(real_part),
       display_name: Box::new(display_part)
@@ -223,7 +230,12 @@ impl Parses for NamePart {
     let marker = NamePart::marker_bytes();
     let real_length = bytes[2] as usize + 2;
     let display_end = opt!(bytes[real_length..].windows(2).position(|w| w == &[marker.0, marker.1])) + real_length;
-    let real_bytes = &bytes[9..real_length];
+    let skip = if bytes[3] == 0x03 {
+      3
+    } else {
+      9
+    };
+    let real_bytes = &bytes[skip..real_length];
     let real_name = match String::from_utf8(real_bytes.to_vec()) {
       Ok(r) => Part::PlainText(r),
       Err(_) => Part::Bytes(real_bytes.to_vec())
@@ -394,7 +406,7 @@ impl Parses for SelectablePart {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum MessageType {
   SystemMessage,
   Say,
@@ -414,13 +426,20 @@ pub enum MessageType {
   CustomEmote,
   Emote,
   Yell,
-  ItemGained,
-  Echo,
-  ClientMessage,
-  DutyFinderUpdate,
-  RewardReceived,
-  ExperienceGained,
+  BattleDamage,
+  BattleMiss,
+  BattleUseAction,
+  BattleGainStatusEffect,
+  BattleGainDebuff,
+  ItemObtained,
+  ClientEcho,
+  ServerEcho,
+  BattleDeathRevive,
+  Error,
+  ReceiveReward,
+  GainExperience,
   Loot,
+  Crafting,
   NpcChat,
   FreeCompanyEvent,
   LogInOut,
@@ -428,7 +447,14 @@ pub enum MessageType {
   PartyFinderUpdate,
   PartyMark,
   Random,
+  BattleReceiveDamage,
+  BattleCast,
+  BattleGainBuff,
+  BattleSufferDebuff,
+  BattleLoseBuff,
+  BattleRecoverDebuff,
   TrialUpdate,
+  GainMgp,
   Unknown(u8)
 }
 
@@ -459,13 +485,20 @@ impl From<u8> for MessageType {
       0x1c => MessageType::CustomEmote,
       0x1d => MessageType::Emote,
       0x1e => MessageType::Yell,
-      // 0x3e => MessageType::ItemGained,
-      0x38 => MessageType::Echo,
-      0x39 => MessageType::ClientMessage,
-      0x3c => MessageType::DutyFinderUpdate,
-      // 0x3e => MessageType::RewardReceived,
-      0x40 => MessageType::ExperienceGained,
+      0x29 => MessageType::BattleDamage,
+      0x2a => MessageType::BattleMiss,
+      0x2b => MessageType::BattleUseAction,
+      0x2e => MessageType::BattleGainStatusEffect,
+      0x2f => MessageType::BattleGainDebuff,
+      0x3e => MessageType::ItemObtained,
+      0x38 => MessageType::ClientEcho,
+      0x39 => MessageType::ServerEcho,
+      0x3a => MessageType::BattleDeathRevive,
+      0x3c => MessageType::Error,
+      // 0x3e => MessageType::ReceiveReward,
+      0x40 => MessageType::GainExperience,
       0x41 => MessageType::Loot,
+      0x42 => MessageType::Crafting,
       0x44 => MessageType::NpcChat,
       0x45 => MessageType::FreeCompanyEvent,
       0x46 => MessageType::LogInOut,
@@ -473,7 +506,15 @@ impl From<u8> for MessageType {
       0x48 => MessageType::PartyFinderUpdate,
       0x49 => MessageType::PartyMark,
       0x4a => MessageType::Random,
+      0xa9 => MessageType::BattleReceiveDamage,
+      0xab => MessageType::BattleCast,
+      0xae => MessageType::BattleGainBuff,
+      0xad => MessageType::BattleAbsorb,
+      0xaf => MessageType::BattleSufferDebuff,
+      0xb0 => MessageType::BattleLoseBuff,
+      0xb1 => MessageType::BattleRecoverDebuff,
       0xb9 => MessageType::TrialUpdate,
+      0xbe => MessageType::GainMgp,
       _ => MessageType::Unknown(u)
     }
   }
@@ -553,7 +594,8 @@ impl MessageParser {
 pub struct FfxivMemoryLogReader {
   pid: u32,
   stop: bool,
-  rx: Option<Receiver<Vec<u8>>>
+  rx: Option<Receiver<Vec<u8>>>,
+  run: Arc<AtomicBool>
 }
 
 impl FfxivMemoryLogReader {
@@ -561,11 +603,12 @@ impl FfxivMemoryLogReader {
     FfxivMemoryLogReader {
       pid: pid,
       stop: stop,
-      rx: None
+      rx: None,
+      run: Arc::new(AtomicBool::new(false))
     }
   }
 
-  fn start(&self) -> Option<Receiver<Vec<u8>>> {
+  pub fn start(&self) -> Option<Receiver<Vec<u8>>> {
     // Create a reader around the PID of the game.
     let reader = match MemReader::new(self.pid) {
       Ok(r) => r,
@@ -578,25 +621,32 @@ impl FfxivMemoryLogReader {
     let chat_address = LittleEndian::read_u32(&raw_chat_pointer) as usize;
     let stop = self.stop;
     let (tx, rx) = std::sync::mpsc::channel();
+    self.run.store(true, Ordering::Relaxed);
+    let run = self.run.clone();
     std::thread::spawn(move || {
       // Index of last read index
       let mut index_index = 0;
-      loop {
+      while run.load(Ordering::Relaxed) {
         // Get raw bytes for current index pointer
         let raw_pointer = reader.read_bytes(INDEX_POINTER, 4).unwrap();
         // Read the raw bytes into an address
         let pointer = LittleEndian::read_u32(&raw_pointer);
+        // Read the total number of lines (modulo 1000 because the game wraps around at 1000)
+        let num_lines = {
+          let raw = reader.read_bytes(LINES_ADDRESS, 4).unwrap();
+          LittleEndian::read_u32(&raw) % 1000
+        };
         // Read u32s backwards until we hit 0
         let mut mem_indices = Vec::with_capacity(index_index + 1);
         loop {
+          // If the amount of lines we've read is equal to the number of lines, break
+          if mem_indices.len() == num_lines as usize {
+            break;
+          }
           // Read backwards, incrementing by four for each index read
           let raw_index = reader.read_bytes(pointer as usize - (4 * (mem_indices.len() + 1)), 4).unwrap();
           // Read the raw bytes into a u32
           let index = LittleEndian::read_u32(&raw_index);
-          // If we hit a 0, break out of the loop
-          if index == 0 {
-            break;
-          }
           // Otherwise, insert the index at the start
           mem_indices.insert(0, index);
         }
@@ -609,6 +659,10 @@ impl FfxivMemoryLogReader {
             std::thread::sleep(std::time::Duration::from_millis(100));
             continue;
           }
+        } else if mem_indices.len() < index_index {
+          // If the amount of indices we've read is less than the amount we were at last time,
+          // we've wrapped around in the memory, so reset the index to 0.
+          index_index = 0;
         }
         // Get all the new indices
         let new_indices = &mem_indices[index_index..];
@@ -629,6 +683,10 @@ impl FfxivMemoryLogReader {
       }
     });
     Some(rx)
+  }
+
+  pub fn stop(&self) {
+    self.run.store(false, Ordering::Relaxed);
   }
 }
 
