@@ -450,6 +450,7 @@ pub enum MessageType {
   BattleReceiveDamage,
   BattleCast,
   BattleGainBuff,
+  BattleAbsorb,
   BattleSufferDebuff,
   BattleLoseBuff,
   BattleRecoverDebuff,
