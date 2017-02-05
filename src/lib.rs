@@ -144,12 +144,32 @@ pub trait HasMarkerBytes {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Part {
+  #[serde(rename = "name")]
   Name { real_name: Box<Part>, display_name: Box<Part> },
+
+  #[serde(rename = "auto_translate")]
   AutoTranslate { category: u8, id: usize },
-  Selectable { info: Vec<u8>, display: Box<Part> },
+
+  #[serde(rename = "selectable")]
+  Selectable { info: Vec<u8>, display: Box<Part> }, // this may be Colored?
+
+  #[serde(rename = "multi")]
   Multi(Vec<Box<Part>>),
+
+  #[serde(rename = "plain_text")]
   PlainText(String),
-  Bytes(Vec<u8>)
+
+  #[serde(rename = "bytes")]
+  Bytes(Vec<u8>),
+
+  #[serde(rename = "formatted")]
+  Formatted { info: Vec<u8>, display: Box<Part> },
+
+  #[serde(rename = "percentage")]
+  Percentage(u8),
+
+  #[serde(rename = "icon")]
+  Icon(u64)
 }
 
 impl HasDisplayText for Part {
@@ -159,13 +179,15 @@ impl HasDisplayText for Part {
       Part::Name { ref display_name, .. } => display_name.display_text(),
       Part::AutoTranslate { category, id } => format!("<AT: {}, {}>", category, id),
       Part::Bytes(ref bytes) => bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" "),
-      Part::Selectable { ref display, .. } => display.display_text(),
-      Part::Multi(ref parts) => parts.iter().map(|x| x.display_text()).collect::<Vec<_>>().join("")
+      Part::Selectable { ref display, .. }
+        | Part::Formatted { ref display, .. } => display.display_text(),
+      Part::Multi(ref parts) => parts.iter().map(|x| x.display_text()).collect::<Vec<_>>().join(""),
+      Part::Percentage(_) => String::from(" "),
+      Part::Icon(id) => format!("<Icon: {}>", id)
     }
   }
 }
 
-#[derive(Debug)]
 pub struct NamePart;
 
 impl NamePart {
@@ -213,7 +235,7 @@ impl DeterminesLength for NamePart {
     let marker = NamePart::marker_bytes();
     let end_pos = opt_or!(bytes[2..].windows(2).position(|w| w == &[marker.0, marker.1]), 0);
     let last_three = opt_or!(bytes[end_pos + 2..].iter().position(|b| b == &0x03), 0);
-    let sum = 2 + end_pos + last_three;
+    let sum = 3 + end_pos + last_three;
     sum as usize
   }
 }
@@ -304,7 +326,7 @@ impl VerifiesData for AutoTranslatePart {
 
 impl DeterminesLength for AutoTranslatePart {
   fn determine_length(bytes: &[u8]) -> usize {
-    bytes[2] as usize + 3
+    bytes[2] as usize + 4
   }
 }
 
@@ -333,7 +355,7 @@ impl PlainTextPart {
 struct MultiPart;
 
 impl MultiPart {
-  fn from_parts(parts: Vec<Part>) -> Part {
+  pub fn from_parts(parts: Vec<Part>) -> Part {
     let boxed_parts = parts.into_iter().map(Box::new).collect();
     Part::Multi(boxed_parts)
   }
@@ -342,7 +364,7 @@ impl MultiPart {
 struct SelectablePart;
 
 impl SelectablePart {
-  fn from_parts(info: Vec<u8>, display: Part) -> Part {
+  pub fn from_parts(info: Vec<u8>, display: Part) -> Part {
     Part::Selectable {
       info: info,
       display: Box::new(display)
@@ -375,7 +397,7 @@ impl DeterminesLength for SelectablePart {
     let marker = SelectablePart::marker_bytes();
     let end_pos = opt_or!(bytes[2..].windows(2).rposition(|w| w == &[marker.0, marker.1]), 0);
     let last_three = opt_or!(bytes[end_pos + 2..].iter().position(|b| b == &0x03), 0);
-    let sum = 2 + end_pos + last_three;
+    let sum = 3 + end_pos + last_three;
     sum as usize
   }
 }
@@ -406,56 +428,343 @@ impl Parses for SelectablePart {
   }
 }
 
+struct FormattedPart;
+
+impl FormattedPart {
+  pub fn from_parts(info: Vec<u8>, display: Part) -> Part {
+    Part::Formatted {
+      info: info,
+      display: Box::new(display)
+    }
+  }
+}
+
+impl HasMarkerBytes for FormattedPart {
+  fn marker_bytes() -> (u8, u8) {
+    static MARKER: (u8, u8) = (0x02, 0x1a);
+    MARKER
+  }
+}
+
+impl VerifiesData for FormattedPart {
+  fn verify_data(bytes: &[u8]) -> bool {
+    if bytes.len() < 7 {
+      return false;
+    }
+    let (two, marker) = FormattedPart::marker_bytes();
+    if bytes[0] != two || bytes[1] != marker {
+      return false;
+    }
+    true
+  }
+}
+
+impl DeterminesLength for FormattedPart {
+  fn determine_length(bytes: &[u8]) -> usize {
+    let marker = FormattedPart::marker_bytes();
+    let end_pos = opt_or!(bytes[2..].windows(2).rposition(|w| w == &[marker.0, marker.1]), 0);
+    let last_three = opt_or!(bytes[end_pos + 2..].iter().position(|b| b == &0x03), 0);
+    let sum = 3 + end_pos + last_three;
+    sum as usize
+  }
+}
+
+impl Parses for FormattedPart {
+  fn parse(bytes: &[u8]) -> Option<Part> {
+    if !FormattedPart::verify_data(bytes) {
+      return None;
+    }
+    let marker = FormattedPart::marker_bytes();
+    let info_length = bytes[2] as usize + 2;
+    // lol rposition because you can embed parts inside of parts, and I don't want to do a ton of
+    // logic to find out the length properly.
+    let display_end = opt!(bytes[info_length..].windows(2).rposition(|w| w == &[marker.0, marker.1])) + info_length;
+    let info_bytes = &bytes[3..info_length];
+    let display_bytes = &bytes[info_length + 1 .. display_end];
+    let mut parts = MessageParser::parse(display_bytes);
+    let display_part = if parts.len() == 1 {
+      parts.remove(0)
+    } else if parts.len() > 1 {
+      MultiPart::from_parts(parts)
+    } else if let Ok(s) = String::from_utf8(display_bytes.to_vec()) {
+      Part::PlainText(s)
+    } else {
+      Part::Bytes(display_bytes.to_vec())
+    };
+    Some(FormattedPart::from_parts(info_bytes.to_vec(), display_part))
+  }
+}
+
+struct PercentagePart;
+
+impl PercentagePart {
+  pub fn from_parts(data: u8) -> Part {
+    Part::Percentage(data)
+  }
+}
+
+impl HasMarkerBytes for PercentagePart {
+  fn marker_bytes() -> (u8, u8) {
+    static MARKER: (u8, u8) = (0x02, 0x1d);
+    MARKER
+  }
+}
+
+impl VerifiesData for PercentagePart {
+  fn verify_data(bytes: &[u8]) -> bool {
+    if bytes.len() != 4 {
+      return false;
+    }
+    let (two, marker) = PercentagePart::marker_bytes();
+    if bytes[0] != two || bytes[1] != marker {
+      return false;
+    }
+    true
+  }
+}
+
+impl DeterminesLength for PercentagePart {
+  fn determine_length(_: &[u8]) -> usize {
+    4
+  }
+}
+
+impl Parses for PercentagePart {
+  fn parse(bytes: &[u8]) -> Option<Part> {
+    if !PercentagePart::verify_data(bytes) {
+      return None;
+    }
+    let data = bytes[2];
+    Some(PercentagePart::from_parts(data))
+  }
+}
+
+struct IconPart;
+
+impl IconPart {
+  pub fn from_parts(data: u64) -> Part {
+    Part::Icon(data)
+  }
+}
+
+impl HasMarkerBytes for IconPart {
+  fn marker_bytes() -> (u8, u8) {
+    static MARKER: (u8, u8) = (0x02, 0x12);
+    MARKER
+  }
+}
+
+impl VerifiesData for IconPart {
+  fn verify_data(bytes: &[u8]) -> bool {
+    if bytes.len() < 3 {
+      return false;
+    }
+    let (two, marker) = IconPart::marker_bytes();
+    if bytes[0] != two || bytes[1] != marker {
+      return false;
+    }
+    // check for 3 after len
+    true
+  }
+}
+
+impl DeterminesLength for IconPart {
+  fn determine_length(bytes: &[u8]) -> usize {
+    let len = bytes[2] as usize;
+    let last_three = opt_or!(bytes[2 + len..].iter().position(|b| b == &0x03), 0);
+    let sum = 3 + len + last_three;
+    sum as usize
+  }
+}
+
+impl Parses for IconPart {
+  fn parse(bytes: &[u8]) -> Option<Part> {
+    if !IconPart::verify_data(bytes) {
+      return None;
+    }
+    let len = bytes[2] as usize;
+    let last_three = opt!(bytes[2 + len..].iter().position(|b| b == &0x03));
+    let raw_data = &bytes[3..3 + len + last_three - 1];
+    let data = opt!(read_var_le(raw_data));
+    Some(IconPart::from_parts(data))
+  }
+}
+
+fn read_var_le(bytes: &[u8]) -> Option<u64> {
+  if bytes.len() == 1 {
+    return Some(bytes[0] as u64);
+  } else if bytes.is_empty() || bytes.len() > 8 || bytes.len() % 2 == 1 {
+    return None;
+  }
+  let mut res: u64 = 0;
+  for (i, byte) in bytes.iter().enumerate() {
+    res |= (*byte as u64) << (8 * i);
+  }
+  Some(res)
+}
+
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum MessageType {
+  #[serde(rename = "system_message")]
   SystemMessage,
+
+  #[serde(rename = "say")]
   Say,
+
+  #[serde(rename = "shout")]
   Shout,
+
+  #[serde(rename = "reply")]
   Reply,
+
+  #[serde(rename = "tell")]
   Tell,
+
+  #[serde(rename = "party")]
   Party,
+
+  #[serde(rename = "linkshell_1")]
   Linkshell1,
+
+  #[serde(rename = "linkshell_2")]
   Linkshell2,
+
+  #[serde(rename = "linkshell_3")]
   Linkshell3,
+
+  #[serde(rename = "linkshell_4")]
   Linkshell4,
+
+  #[serde(rename = "linkshell_5")]
   Linkshell5,
+
+  #[serde(rename = "linkshell_6")]
   Linkshell6,
+
+  #[serde(rename = "linkshell_7")]
   Linkshell7,
+
+  #[serde(rename = "linkshell_8")]
   Linkshell8,
+
+  #[serde(rename = "free_company_chat")]
   FreeCompanyChat,
+
+  #[serde(rename = "custom_emote")]
   CustomEmote,
+
+  #[serde(rename = "emote")]
   Emote,
+
+  #[serde(rename = "yell")]
   Yell,
+
+  #[serde(rename = "battle_damage")]
   BattleDamage,
+
+  #[serde(rename = "battle_miss")]
   BattleMiss,
+
+  #[serde(rename = "battle_use_action")]
   BattleUseAction,
+
+  #[serde(rename = "use_item")]
+  UseItem,
+
+  #[serde(rename = "battle_other_absorb")]
+  BattleOtherAbsorb,
+
+  #[serde(rename = "battle_gain_status_effect")]
   BattleGainStatusEffect,
+
+  #[serde(rename = "battle_gain_debuff")]
   BattleGainDebuff,
+
+  #[serde(rename = "item_obtained")]
   ItemObtained,
+
+  #[serde(rename = "client_echo")]
   ClientEcho,
+
+  #[serde(rename = "server_echo")]
   ServerEcho,
+
+  #[serde(rename = "battle_death_revive")]
   BattleDeathRevive,
+
+  #[serde(rename = "error")]
   Error,
+
+  #[serde(rename = "receive_reward")]
   ReceiveReward,
+
+  #[serde(rename = "gain_experience")]
   GainExperience,
+
+  #[serde(rename = "loot")]
   Loot,
+
+  #[serde(rename = "crafting")]
   Crafting,
+
+  #[serde(rename = "npc_chat")]
   NpcChat,
+
+  #[serde(rename = "free_company_event")]
   FreeCompanyEvent,
+
+  #[serde(rename = "log_in_out")]
   LogInOut,
+
+  #[serde(rename = "market_board")]
   MarketBoard,
+
+  #[serde(rename = "party_finder_update")]
   PartyFinderUpdate,
+
+  #[serde(rename = "party_mark")]
   PartyMark,
+
+  #[serde(rename = "random")]
   Random,
+
+  #[serde(rename = "music_change")]
+  MusicChange,
+
+  #[serde(rename = "battle_receive_damage")]
   BattleReceiveDamage,
+
+  #[serde(rename = "battle_resist_debuff")]
+  BattleResistDebuff,
+
+  #[serde(rename = "battle_cast")]
   BattleCast,
+
+  #[serde(rename = "battle_gain_buff")]
   BattleGainBuff,
-  BattleAbsorb,
+
+  #[serde(rename = "battle_self_absorb")]
+  BattleSelfAbsorb,
+
+  #[serde(rename = "battle_suffer_debuff")]
   BattleSufferDebuff,
+
+  #[serde(rename = "battle_lose_debuff")]
   BattleLoseBuff,
+
+  #[serde(rename = "battle_recover_debuff")]
   BattleRecoverDebuff,
+
+  #[serde(rename = "trial_update")]
   TrialUpdate,
+
+  #[serde(rename = "battle_death")]
+  BattleDeath,
+
+  #[serde(rename = "gain_mgp")]
   GainMgp,
+
+  #[serde(rename = "unknown")]
   Unknown(u8)
 }
 
@@ -489,6 +798,8 @@ impl From<u8> for MessageType {
       0x29 => MessageType::BattleDamage,
       0x2a => MessageType::BattleMiss,
       0x2b => MessageType::BattleUseAction,
+      0x2c => MessageType::UseItem,
+      0x2d => MessageType::BattleOtherAbsorb,
       0x2e => MessageType::BattleGainStatusEffect,
       0x2f => MessageType::BattleGainDebuff,
       0x3e => MessageType::ItemObtained,
@@ -507,14 +818,17 @@ impl From<u8> for MessageType {
       0x48 => MessageType::PartyFinderUpdate,
       0x49 => MessageType::PartyMark,
       0x4a => MessageType::Random,
+      0x4c => MessageType::MusicChange,
       0xa9 => MessageType::BattleReceiveDamage,
+      0xaa => MessageType::BattleResistDebuff,
       0xab => MessageType::BattleCast,
       0xae => MessageType::BattleGainBuff,
-      0xad => MessageType::BattleAbsorb,
+      0xad => MessageType::BattleSelfAbsorb,
       0xaf => MessageType::BattleSufferDebuff,
       0xb0 => MessageType::BattleLoseBuff,
       0xb1 => MessageType::BattleRecoverDebuff,
       0xb9 => MessageType::TrialUpdate,
+      0xba => MessageType::BattleDeath,
       0xbe => MessageType::GainMgp,
       _ => MessageType::Unknown(u)
     }
@@ -549,6 +863,7 @@ impl MessageParser {
   pub fn parse(message: &[u8]) -> Vec<Part> {
     let mut parts: Vec<Part> = Vec::new();
     let mut buf: Vec<u8> = Vec::new();
+    // FIXME: enumerate
     let mut i = 0;
     while i < message.len() {
       let byte = message[i];
@@ -562,7 +877,7 @@ impl MessageParser {
             buf.clear();
           }
           parts.push(part);
-          i += len + 1;
+          i += len;
           continue;
         }
       }
@@ -588,7 +903,10 @@ impl MessageParser {
       message,
       NamePart,
       AutoTranslatePart,
-      SelectablePart)
+      SelectablePart,
+      FormattedPart,
+      PercentagePart,
+      IconPart)
   }
 }
 
