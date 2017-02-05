@@ -49,7 +49,7 @@ fn main() {
   let mut last_sloppy: Option<time::Tm> = None;
   // Print out every entry.
   for entry in reader {
-    if entry.message_type != MessageType::BattleDeathRevive {
+    if entry.message_type != MessageType::BattleDeathRevive && entry.message_type != MessageType::BattleDeath {
       continue;
     }
     let plain_text_part = entry.message.parts.iter()
