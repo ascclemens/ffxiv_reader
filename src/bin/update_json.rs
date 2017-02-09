@@ -2,7 +2,8 @@ extern crate ffxiv_reader;
 extern crate serde_json;
 extern crate time;
 
-use ffxiv_reader::{Entry, MessageType};
+use ffxiv_reader::messages::entries::Entry;
+use ffxiv_reader::messages::MessageType;
 use std::env::args;
 use std::fs::File;
 use std::io::Read;

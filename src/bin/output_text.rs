@@ -1,7 +1,8 @@
 extern crate ffxiv_reader;
 extern crate time;
 
-use ffxiv_reader::*;
+use ffxiv_reader::MemoryEntryReader;
+use ffxiv_reader::messages::HasDisplayText;
 
 use std::env::args;
 use time::Timespec;
@@ -33,7 +34,7 @@ fn main() {
     }
   } else { false };
   // Create a log reader.
-  let reader = FfxivMemoryLogReader::new(pid, stop);
+  let reader = MemoryEntryReader::new(pid, stop);
   // Print out every entry.
   for entry in reader {
     let t = time::at(Timespec::new(entry.timestamp as i64, 0));

@@ -1,7 +1,13 @@
 extern crate ffxiv_reader;
 extern crate serde_json;
+extern crate time;
 
-use ffxiv_reader::{Entry, MessageType, Part, HasDisplayText};
+use time::Timespec;
+
+use ffxiv_reader::messages::entries::Entry;
+use ffxiv_reader::messages::MessageType;
+use ffxiv_reader::messages::parts::Part;
+use ffxiv_reader::messages::HasDisplayText;
 use std::env::args;
 use std::fs::File;
 use std::io::Read;
@@ -25,7 +31,7 @@ fn main() {
     println!("Could not read {}: {}", file_name, e);
     return;
   }
-  let lines = data.split('\n').filter(|x| !x.is_empty());
+  let lines = data.split('\n').filter(|x| !x.is_empty() && x.starts_with('{'));
   let entries: Result<Vec<Entry>, serde_json::Error> = lines.map(serde_json::from_str).collect();
   let entries = match entries {
     Ok(e) => e,

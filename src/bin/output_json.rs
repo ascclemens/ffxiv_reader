@@ -43,7 +43,7 @@ fn main() {
     }
   } else { false };
   // Create a log reader.
-  let reader = FfxivMemoryLogReader::new(pid, stop);
+  let reader = MemoryEntryReader::new(pid, stop);
   // Print out every entry.
   for entry in reader {
     println!("{}", serde_json::to_string(&entry).unwrap());
