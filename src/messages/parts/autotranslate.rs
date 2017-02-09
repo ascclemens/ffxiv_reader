@@ -13,7 +13,15 @@ const DATABASE_JSON_GZ: &'static [u8] = include_bytes!("../../../autotranslate.j
 pub struct Completion {
   pub category: u64,
   pub id: u64,
-  pub value: String
+  pub values: CompletionValues
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CompletionValues {
+  pub en: String,
+  pub de: String,
+  pub fr: String,
+  pub ja: String
 }
 
 lazy_static! {

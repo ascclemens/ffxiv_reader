@@ -105,7 +105,7 @@ impl HasDisplayText for Part {
       Part::Name { ref display_name, .. } => display_name.display_text(),
       Part::AutoTranslate { category, id } => {
         match AutoTranslatePart::get_completion(category, id) {
-          Some(c) => format!("{{{}}}", c.value),
+          Some(c) => format!("{{{}}}", c.values.en),
           None => format!("<AT: {}, {}>", category, id)
         }
       },
