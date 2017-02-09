@@ -51,7 +51,7 @@ fn main() {
   // Last sloppy time
   let mut last_sloppy: Option<time::Tm> = None;
   // Loop over every old and new entry
-  for entry in reader {
+  for entry in reader.iter() {
     // Skip anything that's not a death
     if entry.message_type != MessageType::BattleSystemMessages && entry.message_type != MessageType::BattleDeath {
       continue;

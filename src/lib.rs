@@ -68,7 +68,7 @@ fn read_var_le(bytes: &[u8]) -> Option<u64> {
 ///
 /// ```rust,no_run
 /// let reader = MemoryEntryReader::new(my_pid, false);
-/// for entry in reader {
+/// for entry in reader.iter() {
 ///   println!("{:?}", entry);
 /// }
 /// ```
@@ -195,18 +195,9 @@ impl MemoryEntryReader {
   }
 }
 
-impl IntoIterator for MemoryEntryReader {
-  type Item = Entry;
-  type IntoIter = MemoryEntryReaderIterator;
-
-  fn into_iter(self) -> Self::IntoIter {
-    self.iter()
-  }
-}
-
 impl Drop for MemoryEntryReader {
   fn drop(&mut self) {
-    self.run.store(false, Ordering::Relaxed);
+    self.stop();
   }
 }
 
