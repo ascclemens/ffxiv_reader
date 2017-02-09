@@ -1,8 +1,5 @@
 extern crate ffxiv_reader;
 extern crate serde_json;
-extern crate time;
-
-use time::Timespec;
 
 use ffxiv_reader::messages::entries::Entry;
 use ffxiv_reader::messages::MessageType;
@@ -42,8 +39,8 @@ fn main() {
   };
   for entry in entries {
     if entry.message_type != MessageType::Party &&
-       entry.message_type != MessageType::Emote &&
-       entry.message_type != MessageType::CustomEmote {
+       entry.message_type != MessageType::StandardEmotes &&
+       entry.message_type != MessageType::CustomEmotes {
       continue;
     }
     let (real, display) = match entry.sender {

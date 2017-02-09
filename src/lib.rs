@@ -3,6 +3,8 @@ extern crate memreader;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+#[macro_use]
+extern crate lazy_static;
 
 use byteorder::{LittleEndian, ByteOrder};
 use std::sync::mpsc::Receiver;

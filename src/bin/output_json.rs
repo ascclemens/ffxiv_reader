@@ -45,7 +45,7 @@ fn main() {
   // Create a log reader.
   let reader = MemoryEntryReader::new(pid, stop);
   // Print out every entry.
-  for entry in reader {
+  for entry in reader.iter() {
     println!("{}", serde_json::to_string(&entry).unwrap());
   }
 }

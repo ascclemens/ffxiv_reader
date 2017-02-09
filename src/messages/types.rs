@@ -3,8 +3,17 @@ use std::fmt::Result as FmtResult;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum MessageType {
-  #[serde(rename = "system_message")]
-  SystemMessage,
+  #[serde(rename = "none")]
+  None,
+
+  #[serde(rename = "debug")]
+  Debug,
+
+  #[serde(rename = "urgent_information")]
+  UrgentInformation,
+
+  #[serde(rename = "general_information")]
+  GeneralInformation,
 
   #[serde(rename = "say")]
   Say,
@@ -12,14 +21,17 @@ pub enum MessageType {
   #[serde(rename = "shout")]
   Shout,
 
-  #[serde(rename = "reply")]
-  Reply,
-
   #[serde(rename = "tell")]
   Tell,
 
+  #[serde(rename = "tell_receive")]
+  TellReceive,
+
   #[serde(rename = "party")]
   Party,
+
+  #[serde(rename = "alliance")]
+  Alliance,
 
   #[serde(rename = "linkshell_1")]
   Linkshell1,
@@ -45,89 +57,146 @@ pub enum MessageType {
   #[serde(rename = "linkshell_8")]
   Linkshell8,
 
-  #[serde(rename = "free_company_chat")]
-  FreeCompanyChat,
+  #[serde(rename = "free_company")]
+  FreeCompany,
 
-  #[serde(rename = "custom_emote")]
-  CustomEmote,
+  #[serde(rename = "novice_network")]
+  NoviceNetwork,
 
-  #[serde(rename = "emote")]
-  Emote,
+  #[serde(rename = "custom_emotes")]
+  CustomEmotes,
+
+  #[serde(rename = "standard_emotes")]
+  StandardEmotes,
 
   #[serde(rename = "yell")]
   Yell,
 
-  #[serde(rename = "battle_damage")]
-  BattleDamage,
+  #[serde(rename = "party_2")]
+  Party2,
 
-  #[serde(rename = "battle_miss")]
-  BattleMiss,
+  #[serde(rename = "damage")]
+  Damage,
 
-  #[serde(rename = "battle_use_action")]
-  BattleUseAction,
+  #[serde(rename = "failed_attacks")]
+  FailedAttacks,
 
-  #[serde(rename = "use_item")]
-  UseItem,
+  #[serde(rename = "actions")]
+  Actions,
 
-  #[serde(rename = "battle_other_absorb")]
-  BattleOtherAbsorb,
+  #[serde(rename = "items")]
+  Items,
 
-  #[serde(rename = "battle_gain_status_effect")]
-  BattleGainStatusEffect,
+  #[serde(rename = "healing_magic")]
+  HealingMagic,
 
-  #[serde(rename = "battle_gain_debuff")]
-  BattleGainDebuff,
+  #[serde(rename = "beneficial_effects")]
+  BeneficialEffects,
 
-  #[serde(rename = "item_obtained")]
-  ItemObtained,
+  #[serde(rename = "detrimental_effects")]
+  DetrimentalEffects,
 
-  #[serde(rename = "client_echo")]
-  ClientEcho,
+  #[serde(rename = "echo")]
+  Echo,
 
-  #[serde(rename = "server_echo")]
-  ServerEcho,
+  #[serde(rename = "system_messages")]
+  SystemMessages,
 
-  #[serde(rename = "battle_death_revive")]
-  BattleDeathRevive,
+  #[serde(rename = "system_error_messages")]
+  SystemErrorMessages,
 
-  #[serde(rename = "error")]
-  Error,
+  #[serde(rename = "battle_system_messages")]
+  BattleSystemMessages,
 
-  #[serde(rename = "receive_reward")]
-  ReceiveReward,
+  #[serde(rename = "gathering_system_messages")]
+  GatheringSystemMessages,
 
-  #[serde(rename = "gain_experience")]
-  GainExperience,
+  #[serde(rename = "npc_say")]
+  NpcSay,
 
-  #[serde(rename = "loot")]
-  Loot,
+  #[serde(rename = "loot_notices")]
+  LootNotices,
 
-  #[serde(rename = "crafting")]
-  Crafting,
+  #[serde(rename = "character_progress")]
+  CharacterProgress,
 
-  #[serde(rename = "npc_chat")]
-  NpcChat,
+  #[serde(rename = "loot_messages")]
+  LootMessages,
 
-  #[serde(rename = "free_company_event")]
-  FreeCompanyEvent,
+  #[serde(rename = "crafting_messages")]
+  CraftingMessages,
 
-  #[serde(rename = "log_in_out")]
-  LogInOut,
+  #[serde(rename = "gathering_messages")]
+  GatheringMessages,
 
-  #[serde(rename = "market_board")]
-  MarketBoard,
+  #[serde(rename = "npc_announcements")]
+  NpcAnnouncements,
 
-  #[serde(rename = "party_finder_update")]
-  PartyFinderUpdate,
+  #[serde(rename = "fc_announcements")]
+  FcAnnouncements,
 
-  #[serde(rename = "party_mark")]
-  PartyMark,
+  #[serde(rename = "fc_login_messages")]
+  FcLoginMessages,
 
-  #[serde(rename = "random")]
-  Random,
+  #[serde(rename = "retainer_sale_reports")]
+  RetainerSaleReports,
+
+  #[serde(rename = "party_search_info")]
+  PartySearchInfo,
+
+  #[serde(rename = "sign_settings")]
+  SignSettings,
+
+  #[serde(rename = "dice_rolls")]
+  DiceRolls,
 
   #[serde(rename = "music_change")]
   MusicChange,
+
+  #[serde(rename = "novice_network_notifications")]
+  NoviceNetworkNotifications,
+
+  #[serde(rename = "gm_tell")]
+  GmTell,
+
+  #[serde(rename = "gm_say")]
+  GmSay,
+
+  #[serde(rename = "gm_shout")]
+  GmShout,
+
+  #[serde(rename = "gm_yell")]
+  GmYell,
+
+  #[serde(rename = "gm_party")]
+  GmParty,
+
+  #[serde(rename = "gm_free_company")]
+  GmFreeCompany,
+
+  #[serde(rename = "gm_linkshell_1")]
+  GmLinkshell1,
+
+  #[serde(rename = "gm_linkshell_2")]
+  GmLinkshell2,
+
+  #[serde(rename = "gm_linkshell_3")]
+  GmLinkshell3,
+
+  #[serde(rename = "gm_linkshell_4")]
+  GmLinkshell4,
+
+  #[serde(rename = "gm_linkshell_5")]
+  GmLinkshell5,
+
+  #[serde(rename = "gm_linkshell_6")]
+  GmLinkshell6,
+
+  #[serde(rename = "gm_linkshell_7")]
+  GmLinkshell7,
+
+  #[serde(rename = "gm_linkshell_8")]
+  GmLinkshell8,
 
   #[serde(rename = "battle_receive_damage")]
   BattleReceiveDamage,
@@ -150,7 +219,7 @@ pub enum MessageType {
   #[serde(rename = "battle_suffer_debuff")]
   BattleSufferDebuff,
 
-  #[serde(rename = "battle_lose_debuff")]
+  #[serde(rename = "battle_lose_buff")]
   BattleLoseBuff,
 
   #[serde(rename = "battle_recover_debuff")]
@@ -178,60 +247,83 @@ impl Display for MessageType {
 impl From<u8> for MessageType {
   fn from(u: u8) -> MessageType {
     match u {
-      0x03 => MessageType::SystemMessage,
-      0x0a => MessageType::Say,
-      0x0b => MessageType::Shout,
-      0x0c => MessageType::Reply,
-      0x0d => MessageType::Tell,
-      0x0e => MessageType::Party,
-      0x10 => MessageType::Linkshell1,
-      0x11 => MessageType::Linkshell2,
-      0x12 => MessageType::Linkshell3,
-      0x13 => MessageType::Linkshell4,
-      0x14 => MessageType::Linkshell5,
-      0x15 => MessageType::Linkshell6,
-      0x16 => MessageType::Linkshell7,
-      0x17 => MessageType::Linkshell8,
-      0x18 => MessageType::FreeCompanyChat,
-      0x1c => MessageType::CustomEmote,
-      0x1d => MessageType::Emote,
-      0x1e => MessageType::Yell,
-      0x29 => MessageType::BattleDamage,
-      0x2a => MessageType::BattleMiss,
-      0x2b => MessageType::BattleUseAction,
-      0x2c => MessageType::UseItem,
-      0x2d => MessageType::BattleOtherAbsorb,
-      0x2e => MessageType::BattleGainStatusEffect,
-      0x2f => MessageType::BattleGainDebuff,
-      0x3e => MessageType::ItemObtained,
-      0x38 => MessageType::ClientEcho,
-      0x39 => MessageType::ServerEcho,
-      0x3a => MessageType::BattleDeathRevive,
-      0x3c => MessageType::Error,
-      // 0x3e => MessageType::ReceiveReward,
-      0x40 => MessageType::GainExperience,
-      0x41 => MessageType::Loot,
-      0x42 => MessageType::Crafting,
-      0x44 => MessageType::NpcChat,
-      0x45 => MessageType::FreeCompanyEvent,
-      0x46 => MessageType::LogInOut,
-      0x47 => MessageType::MarketBoard,
-      0x48 => MessageType::PartyFinderUpdate,
-      0x49 => MessageType::PartyMark,
-      0x4a => MessageType::Random,
-      0x4c => MessageType::MusicChange,
-      0xa9 => MessageType::BattleReceiveDamage,
-      0xaa => MessageType::BattleResistDebuff,
-      0xab => MessageType::BattleCast,
-      0xac => MessageType::ReadyItem,
-      0xae => MessageType::BattleGainBuff,
-      0xad => MessageType::BattleSelfAbsorb,
-      0xaf => MessageType::BattleSufferDebuff,
-      0xb0 => MessageType::BattleLoseBuff,
-      0xb1 => MessageType::BattleRecoverDebuff,
-      0xb9 => MessageType::TrialUpdate,
-      0xba => MessageType::BattleDeath,
-      0xbe => MessageType::GainMgp,
+      0 => MessageType::None,
+      1 => MessageType::Debug,
+      2 => MessageType::UrgentInformation,
+      3 => MessageType::GeneralInformation,
+      10 => MessageType::Say,
+      11 => MessageType::Shout,
+      12 => MessageType::Tell,
+      13 => MessageType::TellReceive,
+      14 => MessageType::Party,
+      15 => MessageType::Alliance,
+      16 => MessageType::Linkshell1,
+      17 => MessageType::Linkshell2,
+      18 => MessageType::Linkshell3,
+      19 => MessageType::Linkshell4,
+      20 => MessageType::Linkshell5,
+      21 => MessageType::Linkshell6,
+      22 => MessageType::Linkshell7,
+      23 => MessageType::Linkshell8,
+      24 => MessageType::FreeCompany,
+      27 => MessageType::NoviceNetwork,
+      28 => MessageType::CustomEmotes,
+      29 => MessageType::StandardEmotes,
+      30 => MessageType::Yell,
+      32 => MessageType::Party2,
+      41 => MessageType::Damage,
+      42 => MessageType::FailedAttacks,
+      43 => MessageType::Actions,
+      44 => MessageType::Items,
+      45 => MessageType::HealingMagic,
+      46 => MessageType::BeneficialEffects,
+      47 => MessageType::DetrimentalEffects,
+      56 => MessageType::Echo,
+      57 => MessageType::SystemMessages,
+      58 => MessageType::BattleSystemMessages,
+      59 => MessageType::GatheringSystemMessages,
+      60 => MessageType::SystemErrorMessages,
+      61 => MessageType::NpcSay,
+      62 => MessageType::LootNotices,
+      64 => MessageType::CharacterProgress,
+      65 => MessageType::LootMessages,
+      66 => MessageType::CraftingMessages,
+      67 => MessageType::GatheringMessages,
+      68 => MessageType::NpcAnnouncements,
+      69 => MessageType::FcAnnouncements,
+      70 => MessageType::FcLoginMessages,
+      71 => MessageType::RetainerSaleReports,
+      72 => MessageType::PartySearchInfo,
+      73 => MessageType::SignSettings,
+      74 => MessageType::DiceRolls,
+      75 => MessageType::NoviceNetworkNotifications,
+      76 => MessageType::MusicChange,
+      80 => MessageType::GmTell,
+      81 => MessageType::GmSay,
+      82 => MessageType::GmShout,
+      83 => MessageType::GmYell,
+      84 => MessageType::GmParty,
+      85 => MessageType::GmFreeCompany,
+      86 => MessageType::GmLinkshell1,
+      87 => MessageType::GmLinkshell2,
+      88 => MessageType::GmLinkshell3,
+      89 => MessageType::GmLinkshell4,
+      90 => MessageType::GmLinkshell5,
+      91 => MessageType::GmLinkshell6,
+      92 => MessageType::GmLinkshell7,
+      93 => MessageType::GmLinkshell8,
+      169 => MessageType::BattleReceiveDamage,
+      170 => MessageType::BattleResistDebuff,
+      171 => MessageType::BattleCast,
+      172 => MessageType::ReadyItem,
+      174 => MessageType::BattleGainBuff,
+      173 => MessageType::BattleSelfAbsorb,
+      175 => MessageType::BattleSufferDebuff,
+      176 => MessageType::BattleLoseBuff,
+      177 => MessageType::BattleRecoverDebuff,
+      185 => MessageType::TrialUpdate,
+      186 => MessageType::BattleDeath,
+      190 => MessageType::GainMgp,
       _ => MessageType::Unknown(u)
     }
   }

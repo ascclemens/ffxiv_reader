@@ -36,7 +36,7 @@ fn main() {
   // Create a log reader.
   let reader = MemoryEntryReader::new(pid, stop);
   // Print out every entry.
-  for entry in reader {
+  for entry in reader.iter() {
     let t = time::at(Timespec::new(entry.timestamp as i64, 0));
     let time_string = t.strftime("%d/%m/%Y %H:%M:%S").unwrap();
 

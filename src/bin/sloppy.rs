@@ -53,7 +53,7 @@ fn main() {
   // Loop over every old and new entry
   for entry in reader {
     // Skip anything that's not a death
-    if entry.message_type != MessageType::BattleDeathRevive && entry.message_type != MessageType::BattleDeath {
+    if entry.message_type != MessageType::BattleSystemMessages && entry.message_type != MessageType::BattleDeath {
       continue;
     }
     // Find the first plain text part.

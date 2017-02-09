@@ -103,7 +103,12 @@ impl HasDisplayText for Part {
     match *self {
       Part::PlainText(ref text) => text.clone(),
       Part::Name { ref display_name, .. } => display_name.display_text(),
-      Part::AutoTranslate { category, id } => format!("<AT: {}, {}>", category, id),
+      Part::AutoTranslate { category, id } => {
+        match AutoTranslatePart::get_completion(category, id) {
+          Some(c) => format!("{{{}}}", c.value),
+          None => format!("<AT: {}, {}>", category, id)
+        }
+      },
       Part::Bytes(ref bytes) => bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" "),
       Part::Selectable { ref display, .. }
         | Part::Formatted { ref display, .. } => display.display_text(),
