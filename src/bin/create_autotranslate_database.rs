@@ -12,6 +12,13 @@ use std::path::{Path, PathBuf};
 use std::io::Write;
 use std::ops::Range;
 
+// Use a dump tool like FFXIV Data Explorer and open 0a0000.win32.index. Dump the EXDs inside to
+// CSVs. Rename the files so each file contains only the data after the last backslash.
+// "a\exd\emotemode.exh.csv" becomes "emotemode.exh.csv"
+
+// Provide the folder where all of the CSVs are stored to this binary. It will output JSON
+// for every auto-translate entry.
+
 fn main() {
   let args: Vec<String> = args().skip(1).collect();
 

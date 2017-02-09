@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use memreader::MemReader;
 
 macro_rules! opt {
-    ($e:expr) => (opt_or!($e, None))
+  ($e:expr) => (opt_or!($e, None))
 }
 
 macro_rules! opt_or {
