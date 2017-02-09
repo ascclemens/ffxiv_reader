@@ -73,8 +73,8 @@ fn read_var_le(bytes: &[u8]) -> Option<u64> {
 /// }
 /// ```
 pub struct MemoryEntryReader {
-  pid: u32,
-  stop: bool,
+  pub pid: u32,
+  pub stop: bool,
   run: Arc<AtomicBool>
 }
 
