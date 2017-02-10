@@ -41,16 +41,14 @@ pub enum Part {
     id: usize
   },
 
-  /// A Colored part of the message.
-  ///
-  /// **Note**: this might actually be a colored part of the message.
+  /// A colored part of the message.
   #[serde(rename = "colored")]
   Colored {
-    /// The information about the Colored part.
+    /// The information about the colored part.
     info: Vec<u8>,
-    /// The display part for the Colored part.
+    /// The display part for the colored part.
     display: Box<Part>
-  }, // this may be Colored?
+  },
 
   /// A part composed of multiple other parts.
   ///
