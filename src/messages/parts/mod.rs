@@ -2,7 +2,7 @@ mod name;
 mod autotranslate;
 mod plaintext;
 mod multi;
-mod selectable;
+mod colored;
 mod formatted;
 mod percentage;
 mod icon;
@@ -11,7 +11,7 @@ pub use self::name::NamePart;
 pub use self::autotranslate::AutoTranslatePart;
 pub use self::plaintext::PlainTextPart;
 pub use self::multi::MultiPart;
-pub use self::selectable::SelectablePart;
+pub use self::colored::ColoredPart;
 pub use self::formatted::FormattedPart;
 pub use self::percentage::PercentagePart;
 pub use self::icon::IconPart;
@@ -41,14 +41,14 @@ pub enum Part {
     id: usize
   },
 
-  /// A selectable part of the message.
+  /// A Colored part of the message.
   ///
   /// **Note**: this might actually be a colored part of the message.
-  #[serde(rename = "selectable")]
-  Selectable {
-    /// The information about the selectable part.
+  #[serde(rename = "colored")]
+  Colored {
+    /// The information about the Colored part.
     info: Vec<u8>,
-    /// The display part for the selectable part.
+    /// The display part for the Colored part.
     display: Box<Part>
   }, // this may be Colored?
 
@@ -110,7 +110,7 @@ impl HasDisplayText for Part {
         }
       },
       Part::Bytes(ref bytes) => bytes.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" "),
-      Part::Selectable { ref display, .. }
+      Part::Colored { ref display, .. }
         | Part::Formatted { ref display, .. } => display.display_text(),
       Part::Multi(ref parts) => parts.iter().map(|x| x.display_text()).collect::<Vec<_>>().join(""),
       Part::Percentage(_) => String::from(" "),

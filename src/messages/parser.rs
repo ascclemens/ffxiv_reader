@@ -1,7 +1,7 @@
 use messages::parts::{Part,
   NamePart,
   AutoTranslatePart,
-  SelectablePart,
+  ColoredPart,
   FormattedPart,
   PercentagePart,
   IconPart,
@@ -76,7 +76,7 @@ impl MessageParser {
       message,
       NamePart,
       AutoTranslatePart,
-      SelectablePart,
+      ColoredPart,
       FormattedPart,
       PercentagePart,
       IconPart)

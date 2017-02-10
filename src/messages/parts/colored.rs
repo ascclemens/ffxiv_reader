@@ -2,30 +2,30 @@ use messages::parts::{Part, MultiPart};
 use messages::{Parses, DeterminesLength, VerifiesData, HasMarkerBytes};
 use messages::parser::MessageParser;
 
-pub struct SelectablePart;
+pub struct ColoredPart;
 
-impl SelectablePart {
+impl ColoredPart {
   pub fn from_parts(info: Vec<u8>, display: Part) -> Part {
-    Part::Selectable {
+    Part::Colored {
       info: info,
       display: Box::new(display)
     }
   }
 }
 
-impl HasMarkerBytes for SelectablePart {
+impl HasMarkerBytes for ColoredPart {
   fn marker_bytes() -> (u8, u8) {
     static MARKER: (u8, u8) = (0x02, 0x13);
     MARKER
   }
 }
 
-impl VerifiesData for SelectablePart {
+impl VerifiesData for ColoredPart {
   fn verify_data(bytes: &[u8]) -> bool {
     if bytes.len() < 7 {
       return false;
     }
-    let (two, marker) = SelectablePart::marker_bytes();
+    let (two, marker) = ColoredPart::marker_bytes();
     if bytes[0] != two || bytes[1] != marker {
       return false;
     }
@@ -33,9 +33,9 @@ impl VerifiesData for SelectablePart {
   }
 }
 
-impl DeterminesLength for SelectablePart {
+impl DeterminesLength for ColoredPart {
   fn determine_length(bytes: &[u8]) -> usize {
-    let marker = SelectablePart::marker_bytes();
+    let marker = ColoredPart::marker_bytes();
     let end_pos = opt_or!(bytes[2..].windows(2).rposition(|w| w == &[marker.0, marker.1]), 0);
     let last_three = opt_or!(bytes[end_pos + 2..].iter().position(|b| b == &0x03), 0);
     let sum = 3 + end_pos + last_three;
@@ -43,12 +43,12 @@ impl DeterminesLength for SelectablePart {
   }
 }
 
-impl Parses for SelectablePart {
+impl Parses for ColoredPart {
   fn parse(bytes: &[u8]) -> Option<Part> {
-    if !SelectablePart::verify_data(bytes) {
+    if !ColoredPart::verify_data(bytes) {
       return None;
     }
-    let marker = SelectablePart::marker_bytes();
+    let marker = ColoredPart::marker_bytes();
     let info_length = bytes[2] as usize + 2;
     // lol rposition because you can embed parts inside of parts, and I don't want to do a ton of
     // logic to find out the length properly.
@@ -65,6 +65,6 @@ impl Parses for SelectablePart {
     } else {
       Part::Bytes(display_bytes.to_vec())
     };
-    Some(SelectablePart::from_parts(info_bytes.to_vec(), display_part))
+    Some(ColoredPart::from_parts(info_bytes.to_vec(), display_part))
   }
 }
