@@ -77,7 +77,6 @@ impl Database {
     .collect();
     for db in &single[1..] {
       let db_language = db.language.clone();
-      // let db_completions = db.completions;
       for c in &db.completions {
         let mut completion = new_completions.iter_mut().find(|x| x.id == c.id && x.category == c.category).unwrap();
         match db_language {
