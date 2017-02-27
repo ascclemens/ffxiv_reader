@@ -10,7 +10,8 @@ use byteorder::{LittleEndian, ByteOrder};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use memreader::MemReader;
+use std::io::Read;
+use memreader::{MemReader, ProvidesSlices};
 
 macro_rules! opt {
   ($e:expr) => (opt_or_else!($e, None))
@@ -36,6 +37,13 @@ macro_rules! try_or {
       Ok(x) => x,
       Err(e) => $ret
     }
+  }}
+}
+
+macro_rules! read {
+  ($e:expr, $n:expr) => {{
+    let mut buf = vec![0; $n];
+    $e.read_exact(&mut buf).map(|_| buf)
   }}
 }
 
@@ -123,7 +131,7 @@ impl MemoryEntryReader {
         return None;
       }
     };
-    let raw_chat_pointer = opt!(reader.read_bytes(CHAT_POINTER, 4).ok());
+    let raw_chat_pointer = opt!(read!(reader.address_slice_len(CHAT_POINTER, 4), 4).ok());
     let chat_address = LittleEndian::read_u32(&raw_chat_pointer) as usize;
     let stop = self.stop;
     let (tx, rx) = std::sync::mpsc::channel();
@@ -134,12 +142,12 @@ impl MemoryEntryReader {
       let mut index_index = 0;
       'main_loop: while run.load(Ordering::Relaxed) {
         // Get raw bytes for current index pointer
-        let raw_pointer = try_or!(reader.read_bytes(INDEX_POINTER, 4), break);
+        let raw_pointer = try_or!(read!(reader.address_slice_len(INDEX_POINTER, 4), 4), break);
         // Read the raw bytes into an address
         let pointer = LittleEndian::read_u32(&raw_pointer);
         // Read the total number of lines (modulo 1000 because the game wraps around at 1000)
         let num_lines = {
-          let raw = try_or!(reader.read_bytes(LINES_ADDRESS, 4), break);
+          let raw = try_or!(read!(reader.address_slice_len(LINES_ADDRESS, 4), 4), break);
           LittleEndian::read_u32(&raw) % 1000
         };
         // Read u32s backwards until we hit 0
@@ -150,7 +158,7 @@ impl MemoryEntryReader {
             break;
           }
           // Read backwards, incrementing by four for each index read
-          let raw_index = try_or!(reader.read_bytes(pointer as usize - (4 * (mem_indices.len() + 1)), 4), break);
+          let raw_index = try_or!(read!(reader.address_slice_len(pointer as usize - (4 * (mem_indices.len() + 1)), 4), 4), break);
           // Read the raw bytes into a u32
           let index = LittleEndian::read_u32(&raw_index);
           // Otherwise, insert the index at the start
@@ -182,7 +190,8 @@ impl MemoryEntryReader {
         index_index = mem_indices.len();
         // Read each new message and send it
         for index in new_indices {
-          let message = try_or!(reader.read_bytes(chat_address + last_index as usize, *index as usize - last_index as usize), break);
+          let read_size = *index as usize - last_index as usize;
+          let message = try_or!(read!(reader.address_slice_len(chat_address + last_index as usize, read_size), read_size), break);
           last_index = *index;
           try_or!(tx.send(message), break 'main_loop);
         }
