@@ -5,7 +5,7 @@ authors = ["Kyle Clemens <me@kyleclemens.com>"]
 
 [dependencies]
 byteorder = "1.0.0"
-memreader = {version = "*", path = "/Users/kyleclemens/Code/Rust/Projects/memreader"}
+memreader = "0.1.0"
 lazy_static = "0.2"
 time = "0.1"
 serde = "0.8"
