@@ -51,9 +51,28 @@ pub mod messages;
 
 use messages::entries::{Entry, RawEntry};
 
-const CHAT_POINTER: usize = 0x2CA90E58;
-const INDEX_POINTER: usize = CHAT_POINTER - 12;
-const LINES_ADDRESS: usize = CHAT_POINTER - 52;
+fn get_base_address<'a>(reader: Option<&'a MemReader>) -> Option<usize> {
+  let reader = opt!(reader);
+  reader.get_base_address("ffxiv.exe")
+}
+
+fn get_lines_address<'a>(reader: Option<&'a MemReader>) -> Option<usize> {
+  let reader = opt!(reader);
+  let base_address = opt!(get_base_address(Some(reader)));
+  let pointer_1 = base_address + 0x0107E3F0;
+  let value_1 = try_or!(read!(reader.address_slice_len(pointer_1, 4), 4), return None);
+  let pointer_2 = LittleEndian::read_u32(&value_1) as usize + 0x18;
+  let value_2 = try_or!(read!(reader.address_slice_len(pointer_2, 4), 4), return None);
+  Some(LittleEndian::read_u32(&value_2) as usize + 0x2b8)
+}
+
+fn get_chat_pointer(lines_address: usize) -> usize {
+  lines_address + 52
+}
+
+fn get_index_pointer(lines_address: usize) -> usize {
+  lines_address + 40
+}
 
 // TODO: Handle the game closing, logging out, disconnects, etc. better. Wait for pointers to become
 //       valid again, then start reading again.
@@ -131,7 +150,10 @@ impl MemoryEntryReader {
         return None;
       }
     };
-    let raw_chat_pointer = opt!(read!(reader.address_slice_len(CHAT_POINTER, 4), 4).ok());
+    let lines_address = opt!(get_lines_address(Some(&reader)));
+    let chat_pointer = get_chat_pointer(lines_address);
+    let index_pointer = get_index_pointer(lines_address);
+    let raw_chat_pointer = opt!(read!(reader.address_slice_len(chat_pointer, 4), 4).ok());
     let chat_address = LittleEndian::read_u32(&raw_chat_pointer) as usize;
     let stop = self.stop;
     let (tx, rx) = std::sync::mpsc::channel();
@@ -142,12 +164,12 @@ impl MemoryEntryReader {
       let mut index_index = 0;
       'main_loop: while run.load(Ordering::Relaxed) {
         // Get raw bytes for current index pointer
-        let raw_pointer = try_or!(read!(reader.address_slice_len(INDEX_POINTER, 4), 4), break);
+        let raw_pointer = try_or!(read!(reader.address_slice_len(index_pointer, 4), 4), break);
         // Read the raw bytes into an address
         let pointer = LittleEndian::read_u32(&raw_pointer);
         // Read the total number of lines (modulo 1000 because the game wraps around at 1000)
         let num_lines = {
-          let raw = try_or!(read!(reader.address_slice_len(LINES_ADDRESS, 4), 4), break);
+          let raw = try_or!(read!(reader.address_slice_len(lines_address, 4), 4), break);
           LittleEndian::read_u32(&raw) % 1000
         };
         // Read u32s backwards until we hit 0
