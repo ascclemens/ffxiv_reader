@@ -51,12 +51,12 @@ pub mod messages;
 
 use messages::entries::{Entry, RawEntry};
 
-fn get_base_address<'a>(reader: Option<&'a MemReader>) -> Option<usize> {
+fn get_base_address(reader: Option<&MemReader>) -> Option<usize> {
   let reader = opt!(reader);
   reader.base_address("ffxiv.exe").ok()
 }
 
-fn get_lines_address<'a>(reader: Option<&'a MemReader>) -> Option<usize> {
+fn get_lines_address(reader: Option<&MemReader>) -> Option<usize> {
   let reader = opt!(reader);
   let base_address = opt!(get_base_address(Some(reader)));
   let pointer_1 = base_address + 0x0107E3F0;

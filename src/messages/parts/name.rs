@@ -47,7 +47,7 @@ impl VerifiesData for NamePart {
 impl DeterminesLength for NamePart {
   fn determine_length(bytes: &[u8]) -> usize {
     let marker = NamePart::marker_bytes();
-    let end_pos = opt_or!(bytes[2..].windows(2).position(|w| w == &[marker.0, marker.1]), 0);
+    let end_pos = opt_or!(bytes[2..].windows(2).position(|w| w == [marker.0, marker.1]), 0);
     let last_three = opt_or!(bytes[end_pos + 2..].iter().position(|b| b == &0x03), 0);
     let sum = 3 + end_pos + last_three;
     sum as usize
@@ -61,7 +61,7 @@ impl Parses for NamePart {
     }
     let marker = NamePart::marker_bytes();
     let real_length = bytes[2] as usize + 2;
-    let display_end = opt!(bytes[real_length..].windows(2).position(|w| w == &[marker.0, marker.1])) + real_length;
+    let display_end = opt!(bytes[real_length..].windows(2).position(|w| w == [marker.0, marker.1])) + real_length;
     let skip = if bytes[3] == 0x03 {
       3
     } else {

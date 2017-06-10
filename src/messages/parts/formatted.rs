@@ -36,7 +36,7 @@ impl VerifiesData for FormattedPart {
 impl DeterminesLength for FormattedPart {
   fn determine_length(bytes: &[u8]) -> usize {
     let marker = FormattedPart::marker_bytes();
-    let end_pos = opt_or!(bytes[2..].windows(2).rposition(|w| w == &[marker.0, marker.1]), 0);
+    let end_pos = opt_or!(bytes[2..].windows(2).rposition(|w| w == [marker.0, marker.1]), 0);
     let last_three = opt_or!(bytes[end_pos + 2..].iter().position(|b| b == &0x03), 0);
     let sum = 3 + end_pos + last_three;
     sum as usize
@@ -52,7 +52,7 @@ impl Parses for FormattedPart {
     let info_length = bytes[2] as usize + 2;
     // lol rposition because you can embed parts inside of parts, and I don't want to do a ton of
     // logic to find out the length properly.
-    let display_end = opt!(bytes[info_length..].windows(2).rposition(|w| w == &[marker.0, marker.1])) + info_length;
+    let display_end = opt!(bytes[info_length..].windows(2).rposition(|w| w == [marker.0, marker.1])) + info_length;
     let info_bytes = &bytes[3..info_length];
     let display_bytes = &bytes[info_length + 1 .. display_end];
     let mut parts = MessageParser::parse(display_bytes);
