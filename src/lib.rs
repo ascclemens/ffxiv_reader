@@ -11,7 +11,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::Read;
-use memreader::{MemReader, ProvidesSlices};
+use memreader::prelude::*;
 
 macro_rules! opt {
   ($e:expr) => (opt_or_else!($e, None))
@@ -53,7 +53,7 @@ use messages::entries::{Entry, RawEntry};
 
 fn get_base_address<'a>(reader: Option<&'a MemReader>) -> Option<usize> {
   let reader = opt!(reader);
-  reader.get_base_address("ffxiv.exe")
+  reader.base_address("ffxiv.exe").ok()
 }
 
 fn get_lines_address<'a>(reader: Option<&'a MemReader>) -> Option<usize> {

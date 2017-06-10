@@ -8,8 +8,11 @@ byteorder = "1.0.0"
 memreader = "0.1.1"
 lazy_static = "0.2"
 time = "0.1"
-serde = "0.8"
-serde_derive = "0.8"
-serde_json = "0.8"
+serde = "0.9"
+serde_derive = "0.9"
+serde_json = "0.9"
 csv = "0.15"
-flate2 = "0.2"
+xz2 = "0.1"
+
+[replace]
+"memreader:0.1.1" = {path = "../memreader/"}

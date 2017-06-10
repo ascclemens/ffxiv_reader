@@ -1,13 +1,13 @@
-extern crate flate2;
+extern crate xz2;
 
-use self::flate2::read::GzDecoder;
+use self::xz2::read::XzDecoder;
 
 use messages::parts::Part;
 use messages::{Parses, DeterminesLength, VerifiesData, HasMarkerBytes};
 
 use std::io::Read;
 
-const DATABASE_JSON_GZ: &'static [u8] = include_bytes!("../../../autotranslate.json.gz");
+const DATABASE_JSON_XZ: &'static [u8] = include_bytes!("../../../autotranslate.json.xz");
 
 #[derive(Debug, Deserialize)]
 pub struct Completion {
@@ -26,7 +26,7 @@ pub struct CompletionValues {
 
 lazy_static! {
   pub static ref DATABASE: Vec<Completion> = {
-    let mut reader = GzDecoder::new(DATABASE_JSON_GZ).unwrap();
+    let mut reader = XzDecoder::new(DATABASE_JSON_XZ);
     let mut data = String::new();
     reader.read_to_string(&mut data).unwrap();
     ::serde_json::from_str(&data).unwrap()
