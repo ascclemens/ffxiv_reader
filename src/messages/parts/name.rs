@@ -60,12 +60,12 @@ impl Parses for NamePart {
       return None;
     }
     let marker = NamePart::marker_bytes();
-    let real_length = bytes[2] as usize + 2;
+    let real_length = bytes[2] as usize + 4;
     let display_end = opt!(bytes[real_length..].windows(2).position(|w| w == [marker.0, marker.1])) + real_length;
     let skip = if bytes[3] == 0x03 {
-      3
+      5
     } else {
-      9
+      11
     };
     let real_bytes = &bytes[skip..real_length];
     let real_name = match String::from_utf8(real_bytes.to_vec()) {
