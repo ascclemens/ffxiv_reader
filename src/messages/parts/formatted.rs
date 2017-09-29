@@ -7,7 +7,7 @@ pub struct FormattedPart;
 impl FormattedPart {
   pub fn from_parts(info: Vec<u8>, display: Part) -> Part {
     Part::Formatted {
-      info: info,
+      info,
       display: Box::new(display)
     }
   }

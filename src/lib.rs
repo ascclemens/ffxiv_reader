@@ -5,6 +5,7 @@ extern crate serde_derive;
 extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
+extern crate chrono;
 
 use byteorder::{LittleEndian, ByteOrder};
 use std::sync::mpsc::Receiver;
@@ -48,20 +49,23 @@ macro_rules! read {
 }
 
 pub mod messages;
+pub mod act;
+
+pub use act::ActReader;
 
 use messages::entries::{Entry, RawEntry};
 
 fn get_base_address(reader: Option<&MemReader>) -> Option<usize> {
   let reader = opt!(reader);
-  reader.base_address("ffxiv.exe").ok()
+  reader.base_address("ffxiv_dx11.exe").ok()
 }
 
 fn get_lines_address(reader: Option<&MemReader>) -> Option<usize> {
   let reader = opt!(reader);
   let base_address = opt!(get_base_address(Some(reader)));
-  let pointer_1 = base_address + 0x0107E3F0;
+  let pointer_1 = base_address + 0x017a4138;
   let value_1 = try_or!(read!(reader.address_slice_len(pointer_1, 4), 4), return None);
-  let pointer_2 = LittleEndian::read_u32(&value_1) as usize + 0x18;
+  let pointer_2 = LittleEndian::read_u32(&value_1) as usize + 0x60;
   let value_2 = try_or!(read!(reader.address_slice_len(pointer_2, 4), 4), return None);
   Some(LittleEndian::read_u32(&value_2) as usize + 0x2b8)
 }
@@ -126,8 +130,8 @@ impl MemoryEntryReader {
   /// runs out of messages.
   pub fn new(pid: u32, stop: bool) -> Self {
     MemoryEntryReader {
-      pid: pid,
-      stop: stop,
+      pid,
+      stop,
       run: Arc::new(AtomicBool::new(false))
     }
   }

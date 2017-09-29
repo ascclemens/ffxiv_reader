@@ -18,7 +18,7 @@ pub struct RawEntry {
 impl RawEntry {
   pub fn new(bytes: Vec<u8>) -> Self {
     RawEntry {
-      bytes: bytes
+      bytes
     }
   }
 
@@ -31,9 +31,9 @@ impl RawEntry {
     let sender = self.bytes[9..second_colon + 9].to_vec();
     let message = self.bytes[second_colon + 9 + 1..].to_vec();
     Some(RawEntryParts {
-      header: header,
-      sender: sender,
-      message: message
+      header,
+      sender,
+      message
     })
   }
 
@@ -75,9 +75,9 @@ impl RawEntryParts {
     let message = Message::new(MessageParser::parse(&self.message));
     Entry {
       message_type: message_type.into(),
-      timestamp: timestamp,
-      sender: sender,
-      message: message
+      timestamp,
+      sender,
+      message
     }
   }
 }

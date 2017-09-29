@@ -17,7 +17,7 @@ pub struct Message {
 impl Message {
   pub fn new(parts: Vec<Part>) -> Self {
     Message {
-      parts: parts
+      parts
     }
   }
 }
